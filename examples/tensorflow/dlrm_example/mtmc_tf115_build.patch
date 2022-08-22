@@ -1,0 +1,12 @@
+diff --git a/tensorflow/core/BUILD b/tensorflow/core/BUILD
+index 9bcd87aede..d73f99bebf 100644
+--- a/tensorflow/core/BUILD
++++ b/tensorflow/core/BUILD
+@@ -2477,6 +2477,7 @@ cc_library(
+     copts = tf_copts(),
+     defines = LIB_INTERNAL_DEFINES,
+     deps = tf_additional_lib_deps() + [
++               "//mtmc_profiler:mtmc_profiler",
+                ":core_stringpiece",
+                ":lib_hash_crc32c_accelerate_internal",
+                ":lib_proto_parsing",

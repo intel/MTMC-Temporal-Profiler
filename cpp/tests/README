@@ -1,0 +1,12 @@
+mtmc_tf_tests.cpp:
+cd scripts
+rm -rf ../cpp/tests/test_logs/mtmc_tf_tests_logs/*
+./cpp_tftest.sh
+
+Workflow:
+TF -> Eigen::threadpool setup -> mtmc init(cfg address) -> threadpool info export to env"MTMC_THREAD_EXPORT"
+-> Session.Run() -> Output mtmc logs to /home/intel/work/mtmc/cpp/tests/test_logs/mtmc_tf_tests_logs/mtmc_raw_(mtmc_profiler_ptr)
+-> export stepstate to /home/intel/work/mtmc/cpp/tests/test_logs/mtmc_tf_tests_logs/step_state
+Next py script will handle post processing
+Run post_processing.py
+

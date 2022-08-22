@@ -1,0 +1,4 @@
+Environment variables:
+MTMC_CONFIG: The address that stores the profiler's configuration
+MTMC_THREAD_EXPORT: Address of a folder that will store exported threadpool information
+MTMC_PROF_DISABLE: Globally disable the profiler

@@ -1,0 +1,7 @@
+UseTopdownMetric
+Group,0
+CPU_CLK_UNHALTED.THREAD,-b,aa,0,0
+INST_RETIRED.ANY,c0,0,0,0
+CPU_CLK_UNHALTED.REF_TSC,0,3,0,0
+End
+EndConfig
