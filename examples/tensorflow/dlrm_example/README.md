@@ -33,9 +33,10 @@ $ apply_mtmc.sh [Path to Tensorflow source code]
 Build the tensorflow again with the same command. Then copy the shared library to the lib folder in this project.
 
 ````
-$ cp [Path to Tensorflow source code]/bazel-out/k8-opt/bin/tensorflow/libtensorflow_cc.so mtmc/cpp/tests/tf/lib/libtensorflow_cc.so
-$ cp [Path to Tensorflow source code]/bazel-out/k8-opt/bin/tensorflow/libtensorflow_framework.so mtmc/cpp/tests/tf/lib/libtensorflow_framework.so
+$ cp [Path to Tensorflow source code]/bazel-out/k8-opt/bin/tensorflow/libtensorflow_cc.so cpp/tests/tf/lib/libtensorflow_cc.so
+$ cp [Path to Tensorflow source code]/bazel-out/k8-opt/bin/tensorflow/libtensorflow_framework.so cpp/tests/tf/lib/libtensorflow_framework.so
 ````
+if make new folders if tf/lib is not existed.
 
 #### Run the DLRM model with MTMC profiler
 

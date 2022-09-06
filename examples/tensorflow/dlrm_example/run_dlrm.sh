@@ -4,17 +4,18 @@ projroot=$(cd $filepath; cd ../../..; pwd)
 echo $projroot
 
 cd $projroot/scripts/
-./rebuild.sh -DBUILD_TEST=ON
+bash rebuild.sh -DBUILD_TEST=ON
 
 logfolder=$filepath/logs
 pbfile=$projroot/cpp/tests/dlrm_keras.pbtxt
 thpfolder=$filepath/thp_info
 configfile=$filepath/config_examples/$5
 
-mkdir logfolder
-mkdir thpfolder
-cd logfolder && rm -rf *
-cd thpfolder && rm -rf *
+#mkdir logfolder
+#mkdir thpfolder
+#cd logfolder && rm -rf *
+#cd thpfolder && rm -rf *
+cd $projroot
 
 rm -rf $thpfolder
 mkdir $thpfolder

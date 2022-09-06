@@ -533,7 +533,7 @@ class PerfMapper:
 
 class PostProcessor:
 
-    def __init__(self, log_folder, config_addr, tma_cal, thp_info_addr=None, step_state_addr=None):
+    def __init__(self, log_folder, config_addr, tma_cal, thp_info_addr=None, step_state_addr=None, skip=None):
         self.log_folder = log_folder
         self.thp_info_addr = thp_info_addr
         if step_state_addr is None:
@@ -557,6 +557,12 @@ class PostProcessor:
         self.perfmon_parser = PerfmonParser(tma_cal, config_addr)
         self.log_dict = {} # key: mtmc_raw data name, val: List:[SingleLog]
         self.config_addr = config_addr
+
+        # Extra configs:
+        if skip is not None:
+            self.skip = skip.split(",")
+        else:
+            self.skip = []
 
     def ProcessTFTimeline(self):
         if self.step_state_addr is None or not os.path.exists(self.step_state_addr):
@@ -732,11 +738,14 @@ class PostProcessor:
         self.ProcessTFTimeline()
 
         # Sched info(System info) from guard sampler
-        pm = PerfMapper(self.thp_info_addr)
-        pm.CalClock(os.path.join(self.log_folder, "timecal.txt"))
-        sched_dict = pm.PerfDataToTimeline(os.path.join(self.log_folder, "perf.data"),
-                              time_boundary=self.time_boundary,
-                              output_path=os.path.join(self.log_folder, "perf_sched.json"))
+        if "ctx_switch" in self.skip:
+            sched_dict = None
+        else:
+            pm = PerfMapper(self.thp_info_addr)
+            pm.CalClock(os.path.join(self.log_folder, "timecal.txt"))
+            sched_dict = pm.PerfDataToTimeline(os.path.join(self.log_folder, "perf.data"),
+                                  time_boundary=self.time_boundary,
+                                  output_path=os.path.join(self.log_folder, "perf_sched.json"))
 
         tf_end_time = time.time()
         print(f"Tensorflow log processing time: {tf_end_time - start_time}s")
@@ -795,6 +804,8 @@ if __name__ == "__main__":
     arg_parser.add_argument("-c", type=str, required=True, default=None, help="Path to the mtmc config")
     arg_parser.add_argument("-m", type=str, default="tf1", help="Post processing mode: tf1 - Tensorflow 1.15.0 full log. normal - mtmc without tf information")
     arg_parser.add_argument("-r", type=str, default=None, help="Comma separated mtmc log names that will be processed")
+    arg_parser.add_argument("--skip", type=str, default=None, help="Comma separated list of analysis that will be ignore:\n"
+                                                                   "ctx_switch: Context switch event collected by guard sampler")
 
     args = arg_parser.parse_args()
 
@@ -816,7 +827,8 @@ if __name__ == "__main__":
         pp = PostProcessor(args.l,
                            tma_cal=tc.TmaCal(),
                            config_addr=args.c,
-                           thp_info_addr=args.t)
+                           thp_info_addr=args.t,
+                           skip=args.skip)
         if args.m == "tf1":
             pp.ProcessMTMCLogFiles()
         elif args.m == "normal":

@@ -1,0 +1,16 @@
+*.so
+*.o
+*.a
+
+build/*
+.idea/
+cmake-build-debug/
+/cpp/tests/test_logs/*
+/cpp/tests/tf/lib/*
+/cpp/tests/rdt_set.h
+/examples/tensorflow/dlrm_example/logs/
+/examples/tensorflow/dlrm_example/thp_info/
+/examples/tensorflow/dlrm_example/backup/
+/cpp/tests/tf/
+post_processing/__pycache__/
+post_processing/sched_info
