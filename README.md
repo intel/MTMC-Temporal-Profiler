@@ -29,3 +29,13 @@ $ make install
 ### Example integration with tensorflow
 
 Please follow Readme in examples folder for example of using MTMC Temporal profiler with Tensorflow 1.15.0
+
+
+### Example log
+
+We provide a example processed timeline by the profiler for the DLRM workloads under examples/tensorflow/dlrm_example/example_log/.
+
+The timeline is based on DLRM executed on Tensorflow 1.15.0. With original timeline captured by Tensorflow profiler, it expands
+to profiler Intra-op threads, Core threads mappings and Per intra-op task micro-architecture telemetry.
+
+You can view the timeline by your self with perfetto or chrome://tracing/. Simply load the .json file directly.
