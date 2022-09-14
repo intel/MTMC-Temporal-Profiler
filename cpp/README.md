@@ -8,15 +8,15 @@ For Intel CPUs, you can specify the counters you would like to read and equation
 ## Example Useage
 
 ### 1. Write a config file
-Configs for events
+Configs for events. Events and their configurations(i.e. EventSel, UMask...) can be found on perfmon-events.intel.com
 ````
 Group,X
-[Event name],[event],[umask],[inv],[cmask]
+[Event name],[EventSel],[UMask],[Invert],[CMask]
 ...
 ...
 End
 Group,1
-[Event name],[event],[umask],[inv],[cmask]
+[Event name],[EventSel],[UMask],[Invert],[CMask]
 ...
 End
 EndConfig

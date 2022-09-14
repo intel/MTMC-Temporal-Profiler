@@ -14,16 +14,6 @@ EXE_ACTIVITY.BOUND_ON_LOADS,a6,21,0,5
 EXE_ACTIVITY.BOUND_ON_STORES,a6,40,0,2
 End
 EndConfig
-UniqueEvents
-a:CPU_CLK_UNHALTED.THREAD,3c
-b:INST_RETIRED.ANY,c0
-c:CPU_CLK_UNHALTED.REF_TSC,3
-d:MEMORY_ACTIVITY.STALLS_L1D_MISS,: (.event=0x47, .umask=0x03, .inv=0, .cmask=0x3) Counters: 0,1,2,3
-e:MEMORY_ACTIVITY.STALLS_L2_MISS,: (.event=0x47, .umask=0x05, .inv=0, .cmask=0x5) Counters: 0,1,2,3
-f:MEMORY_ACTIVITY.STALLS_L3_MISS,: (.event=0x47, .umask=0x09, .inv=0, .cmask=0x9) Counters: 0,1,2,3
-g:EXE_ACTIVITY.BOUND_ON_LOADS,: (.event=0xa6, .umask=0x21, .inv=0, .cmask=0x5) Counters: 0,1,2,3,4,5,6,7
-h:EXE_ACTIVITY.BOUND_ON_STORES,: (.event=0xa6, .umask=0x40, .inv=0, .cmask=0x2) Counters: 0,1,2,3,4,5,6,7
-End
 Equations
 Freq(GHz)
 CPI
