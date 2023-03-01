@@ -161,7 +161,7 @@ namespace mtmc {
          * correctness ot the final result.
          * @return 1 for success
          */
-        int PerCoreRead(uint64_t* ret, bool is_start, ReadResult* rd_ret);
+        int PerCoreRead(bool is_start, uint64_t* ret, ReadResult* rd_ret);
 
         void DebugPrint();
 

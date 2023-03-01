@@ -336,7 +336,7 @@ namespace mtmc {
         return 1;
     }
 
-    int PerfmonCollector::PerCoreRead(uint64_t* ret, const bool is_start, ReadResult* rd_ret) {
+    int PerfmonCollector::PerCoreRead(bool is_start, uint64_t* ret, ReadResult* rd_ret) {
         // Get core and socket id
         Env::GetCoreId(&rd_ret->core_id, &rd_ret->prefix);
 

@@ -137,7 +137,7 @@ namespace mtmc {
         log_info->pthread_id = th_info.pthread_id;
 
         log_info->start_ts = Env::GetClockTimeNs();
-        auto status = perfmon_collector_->PerCoreRead(log_info->ret_start, true, &log_info->rd_ret_start);
+        auto status = perfmon_collector_->PerCoreRead(true, log_info->ret_start, &log_info->rd_ret_start);
         if (status == -1) {
             DDprintf(FRED("Failed perfmon_collector per core read\n"));
         }
@@ -171,7 +171,7 @@ namespace mtmc {
         }
 
         log_info->end_ts = Env::GetClockTimeNs();
-        auto status = perfmon_collector_->PerCoreRead(log_info->ret_end, false, &log_info->rd_ret_end);
+        auto status = perfmon_collector_->PerCoreRead(false, log_info->ret_end, &log_info->rd_ret_end);
         if (status == -1) {
             DDprintf(FRED("Failed perfmon_collector per core read\n"));
         }
