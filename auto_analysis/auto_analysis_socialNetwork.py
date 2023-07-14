@@ -369,7 +369,7 @@ class ProfileData(object) :
 
     def GetInputNameList(self) :
         return self.__input_name_list
-
+    
     def GetCoreList(self) :
         return self.__core_list
 
@@ -646,7 +646,7 @@ class TimelineData(object) :
                 op_name_list.append(elem['args']['node_name'])
 
         return list(set(op_name_list))
-
+    
     def GetCoreList(self, op_name) :
         core_list = []
         for elem in self.__mtmc_prof :

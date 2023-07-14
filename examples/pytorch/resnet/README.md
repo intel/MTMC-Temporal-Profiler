@@ -16,7 +16,7 @@ This is an example of runing Resnet50 with MTMC profiler on Pytorch 2.0
 start exporter
 ````
 $ /usr/local/bin/opentele_exporter &
-````
+```` 
 
 set config and run resnet50 on Pytorch:
 

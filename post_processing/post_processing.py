@@ -416,7 +416,7 @@ class TimelineMapper:
     def GeneralizeSingleThread(self, raw_logs):
         intraop_log = []
         interop_log = []
-
+        
         for single_log in raw_logs:
             if single_log.prefix.split("~")[0] == "INTEROP":
                 interop_log.append(single_log)

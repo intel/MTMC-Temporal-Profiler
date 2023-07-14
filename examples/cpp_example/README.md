@@ -13,10 +13,10 @@ You can generate a configuration from our website (Currently experimental. Only 
 3. At Low-Level tag, select desired metrics.
 4. Click generate config
 5. Click download config
-6. Store the configuration to your machine.
+6. Store the configuration to your machine. 
 
 ### Example Configuration
-Instead, you could use the example configuration: example_cfg_mem.json. This configuration is target for SPR to measure Topdown metrics and memory
+Instead, you could use the example configuration: example_cfg_mem.json. This configuration is target for SPR to measure Topdown metrics and memory 
 
 ### Download Perfmon infos from Intel's repo
 ````

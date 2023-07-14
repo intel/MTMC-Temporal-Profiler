@@ -5,7 +5,7 @@ Multi-Task Multi-Core Profiler provide auto analysis function for end user.
  ## Getting Started
 
  1. get the output json files from post processing step, for example, the output files:
-
+	
 	 - [ ] runtime-timeline.json : the timeline gennerated by post processing for your running.
 	 - [ ] groundtruth-timeline.json : the timeline gennerated by post processing for groundtruth.
 
@@ -27,7 +27,7 @@ Multi-Task Multi-Core Profiler provide auto analysis function for end user.
 4. for QPS target and compared with groudtruth :
 	````
 		# mkdir output_qps_with_gt_dir
-		# python ./auto_analysis.py -g groundtruth-timeline.json  -i runtime-timeline.json -t QPS -o output_qps_with_gt_dir
+		# python ./auto_analysis.py -g groundtruth-timeline.json  -i runtime-timeline.json -t QPS -o output_qps_with_gt_dir 
 	````
 	the output file would be stored in dir '***output_latency_with_gt_dir***'.
 

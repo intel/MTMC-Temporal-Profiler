@@ -5,7 +5,7 @@ index fdbc1e994..094e0c7bc 100644
 @@ -40,6 +40,9 @@ option(DNNL_ENABLE_CONCURRENT_EXEC
  option(DNNL_ENABLE_PRIMITIVE_CACHE "enables primitive cache." ON)
      # enabled by default
-
+ 
 +option(MTMC_PROFILER
 +    "MTMC_PROFILER function" ON)
 +
@@ -19,7 +19,7 @@ index 7460aef76..c9cfa8bfc 100644
 @@ -48,6 +48,11 @@ if(NOT DNNL_VERBOSE)
      add_definitions_with_host_compiler(-DDISABLE_VERBOSE)
  endif()
-
+ 
 +if(MTMC_PROFILER)
 +    add_definitions_with_host_compiler(-DMTMC_PROFILER)
 +    list(APPEND EXTRA_SHARED_LIBS "libpfc.so")
@@ -35,7 +35,7 @@ index 97fd94705..02c1bc9a6 100644
 @@ -21,6 +21,11 @@
  #include <functional>
  #include <mutex>
-
+ 
 +#ifdef MTMC_PROFILER
 +#include "mtmc/mtmc_temp_profiler.h"
 +#include "mtmc/util.h"
@@ -43,10 +43,10 @@ index 97fd94705..02c1bc9a6 100644
 +
  #include "utils.hpp"
  #include "z_magic.hpp"
-
+ 
 @@ -286,6 +291,9 @@ inline int adjust_num_threads(int nthr, dim_t work_amount) {
  }
-
+ 
  static inline void parallel(int nthr, const std::function<void(int, int)> &f) {
 +#ifdef MTMC_PROFILER
 +    mtmc::MTMCTemprolProfiler& prof = mtmc::MTMCTemprolProfiler::getInstance();
@@ -130,7 +130,7 @@ index e46712b8e..4b297e4dc 100644
 @@ -34,6 +34,11 @@
  #include "stream.hpp"
  #include "utils.hpp"
-
+ 
 +#ifdef MTMC_PROFILER
 +#include "mtmc/mtmc_temp_profiler.h"
 +#include "mtmc/util.h"
@@ -180,5 +180,5 @@ index e46712b8e..4b297e4dc 100644
 +        }
 +#endif
      }
-
+ 
  #if defined(DNNL_ENABLE_ITT_TASKS)

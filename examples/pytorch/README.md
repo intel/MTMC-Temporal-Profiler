@@ -38,7 +38,7 @@ Build the Pytorch. Then copy the MTMC library to the lib folder in torch.
 
 ````
 $ python setup.py install
-$ cp /usr/local/lib64/libpfc.so /usr/lib64/python3.8/site-packages/torch/lib/libpfc.so
+$ cp /usr/local/lib64/libpfc.so /usr/lib64/python3.8/site-packages/torch/lib/libpfc.so 
 ````
 
 #### Build Pytorch + IPEX

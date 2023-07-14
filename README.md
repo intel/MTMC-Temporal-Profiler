@@ -14,7 +14,7 @@ Please follow doc/Install.md.
 
 ### C++ code instrumentation example
 
-Please follow examples/cpp_example/README.md for how to trace a C++ program
+Please follow examples/cpp_example/README.md for how to trace a C++ program 
 
 ### Example log
 

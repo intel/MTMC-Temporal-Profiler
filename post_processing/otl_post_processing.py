@@ -255,7 +255,7 @@ def ParseSpanToTimelinePT(file, cfg_file, output_file):
                         else :
                             if detailed_dict[key_step][key_name]["dur"] <= duration :
                                 detailed_dict[key_step][key_name] = dtl_node_dict
-
+                            
     l = sorted(list(set(op_name_list)))
     for v in detailed_dict.values() :
         for i in range(1, len(l)) :
