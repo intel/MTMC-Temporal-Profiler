@@ -1,0 +1,231 @@
+diff --git a/aten/src/ATen/ParallelOpenMP.h b/aten/src/ATen/ParallelOpenMP.h
+index f1d0e7fb0a8..2a809d76601 100644
+--- a/aten/src/ATen/ParallelOpenMP.h
++++ b/aten/src/ATen/ParallelOpenMP.h
+@@ -10,6 +10,11 @@
+ #include <omp.h>
+ #endif
+
++#ifdef MTMC_PROFILER
++#include "mtmc/mtmc_temp_profiler.h"
++#include "mtmc/util.h"
++#endif
++
+ namespace at {
+
+ #ifdef _OPENMP
+@@ -23,6 +28,13 @@ inline void invoke_parallel(
+   std::atomic_flag err_flag = ATOMIC_FLAG_INIT;
+   std::exception_ptr eptr;
+
++#ifdef MTMC_PROFILER
++    mtmc::MTMCTemprolProfiler& prof = mtmc::MTMCTemprolProfiler::getInstance();
++    auto p = prof.GetParamsInfo();
++    auto ctx = prof.CurrentCtx();
++#endif
++
++
+ #pragma omp parallel
+   {
+     // choose number of tasks based on grain size and number of threads
+@@ -39,7 +51,28 @@ inline void invoke_parallel(
+     if (begin_tid < end) {
+       try {
+         internal::ThreadIdGuard tid_guard(tid);
++#ifdef MTMC_PROFILER
++        if (ctx) {
++            // MTMC IntraOp Start
++            using namespace mtmc;
++            struct TraceInfo trace_info;
++            trace_info.trace_id = ctx->tracing_hash_id;
++            trace_info.name = ctx->name;
++            trace_info.op = ctx->op;
++            trace_info.current_id = 0;
++            trace_info.parent_id = ctx->ctx_hash_id;
++            trace_info.inter_op = false;
++            trace_info.parent_tid = p.parent_tid;
++            trace_info.parent_pthread_id = p.parent_pthread_id;
++            prof.LogStart(trace_info, ctx->name);
++        }
++#endif
+         f(begin_tid, std::min(end, chunk_size + begin_tid));
++#ifdef MTMC_PROFILER
++        if (ctx) {
++            prof.LogEnd();
++        }
++#endif
+       } catch (...) {
+         if (!err_flag.test_and_set()) {
+           eptr = std::current_exception();
+diff --git a/torch/CMakeLists.txt b/torch/CMakeLists.txt
+index f1a1fec8154..feb052d6a3c 100644
+--- a/torch/CMakeLists.txt
++++ b/torch/CMakeLists.txt
+@@ -85,7 +85,8 @@ set(TORCH_PYTHON_LINK_LIBRARIES
+     pybind::pybind11
+     shm
+     fmt::fmt-header-only
+-    ATEN_CPU_FILES_GEN_LIB)
++    ATEN_CPU_FILES_GEN_LIB
++    "-lpfc")
+
+ set(TORCH_PYTHON_COMPILE_DEFINITIONS)
+
+@@ -360,6 +361,8 @@ if(BUILD_ONEDNN_GRAPH)
+   target_compile_definitions(torch_cpu PRIVATE "-DBUILD_ONEDNN_GRAPH")
+ endif()
+
++target_compile_definitions(torch_cpu PRIVATE "-DMTMC_PROFILER")
++
+ if(NOT TORCH_PYTHON_LINK_FLAGS STREQUAL "")
+     set_target_properties(torch_python PROPERTIES LINK_FLAGS ${TORCH_PYTHON_LINK_FLAGS})
+ endif()
+diff --git a/torch/csrc/autograd/profiler_kineto.cpp b/torch/csrc/autograd/profiler_kineto.cpp
+index a14ad29dad5..2d1a2a28fdb 100644
+--- a/torch/csrc/autograd/profiler_kineto.cpp
++++ b/torch/csrc/autograd/profiler_kineto.cpp
+@@ -469,6 +469,14 @@ template <bool use_global_state_ptr = false>
+ void onFunctionExit(
+     const at::RecordFunction& fn,
+     at::ObserverContext* ctx_ptr) {
++#ifdef MTMC_PROFILER
++  mtmc::MTMCTemprolProfiler& prof = mtmc::MTMCTemprolProfiler::getInstance();
++  auto ctx = prof.CurrentCtx();
++  if (ctx && (ctx->level <= 2)) {
++    prof.LogEnd();
++  }
++  prof.PopCurrentCtx();
++#endif
+   auto state_ptr = KinetoThreadLocalState::get(use_global_state_ptr);
+   if (!state_ptr) {
+     return;
+@@ -651,6 +659,11 @@ void enableProfiler(
+   if (has_cpu) {
+     config.global() ? pushProfilingCallbacks</*global=*/true>(scopes)
+                     : pushProfilingCallbacks</*global=*/false>(scopes);
++#ifdef MTMC_PROFILER
++    mtmc::MTMCTemprolProfiler& prof = mtmc::MTMCTemprolProfiler::getInstance();
++    prof.Init();
++    prof.GlobalProfilerEnable();
++#endif
+   }
+
+   if (!config.global()) {
+@@ -672,6 +685,10 @@ std::unique_ptr<ProfilerResult> disableProfiler() {
+
+   state_ptr->removeCallback();
+
++#ifdef MTMC_PROFILER
++  mtmc::MTMCTemprolProfiler& prof = mtmc::MTMCTemprolProfiler::getInstance();
++  prof.GlobalProfilerDisable();
++#endif
+   // Traces are converged via libkineto automatically for ondemand flow
+   if (state_ptr->config().global()) {
+     (void)std::static_pointer_cast<KinetoThreadLocalState>(state_ptr)
+diff --git a/torch/csrc/autograd/profiler_kineto.h b/torch/csrc/autograd/profiler_kineto.h
+index 69277c90d18..7932cc4cf08 100644
+--- a/torch/csrc/autograd/profiler_kineto.h
++++ b/torch/csrc/autograd/profiler_kineto.h
+@@ -8,6 +8,11 @@
+ #include <torch/csrc/profiler/stubs/base.h>
+ #include <torch/csrc/profiler/util.h>
+
++#ifdef MTMC_PROFILER
++#include "mtmc/mtmc_temp_profiler.h"
++#include "mtmc/util.h"
++#endif
++
+ namespace torch {
+ namespace profiler {
+ namespace impl {
+diff --git a/torch/csrc/profiler/collection.cpp b/torch/csrc/profiler/collection.cpp
+index e3a57518db2..740ca45e8c4 100644
+--- a/torch/csrc/profiler/collection.cpp
++++ b/torch/csrc/profiler/collection.cpp
+@@ -26,6 +26,11 @@
+ #include <torch/csrc/profiler/data_flow.h>
+ #include <torch/csrc/profiler/kineto_shim.h>
+
++#ifdef MTMC_PROFILER
++#include "mtmc/mtmc_temp_profiler.h"
++#include "mtmc/util.h"
++#endif
++
+ namespace torch {
+ namespace profiler {
+ namespace impl {
+@@ -229,7 +234,6 @@ std::unique_ptr<KinetoObserverContext> ThreadLocalSubqueue::begin_op(
+   } else {
+     torch::profiler::impl::kineto::pushCorrelationId(corr_id);
+   }
+-
+ #if !defined BUILD_LITE_INTERPRETER && !defined C10_MOBILE
+   // backward nodes source range corresponds to the forward node
+   // TODO: consider using C++ stack trace
+@@ -266,6 +270,67 @@ std::unique_ptr<KinetoObserverContext> ThreadLocalSubqueue::begin_op(
+     event->counters_ = std::make_unique<perf_counters_t>(n, 0);
+     perf_profiler_->Enable();
+   }
++#ifdef MTMC_PROFILER
++  auto seq = corr_id;
++  mtmc::MTMCTemprolProfiler& prof = mtmc::MTMCTemprolProfiler::getInstance();
++  mtmc::Context mtmc_ctx;
++  auto p_info = prof.GetParamsInfo();
++  auto ctx = prof.CurrentCtx();
++  bool root = false;
++  if (!ctx) {
++    ctx = &mtmc_ctx;
++    root = true;
++  }
++
++  size_t hash_id_int = mtmc::util::GenHashId();
++  // construct the current the ctx
++  mtmc_ctx.is_default = false;
++  mtmc_ctx.op = fn.name();
++  mtmc_ctx.ctx_hash_id = hash_id_int;
++  if (root) {
++    mtmc_ctx.tracing_hash_id = mtmc::util::GenHashId();
++    mtmc_ctx.set_offset_seq = true;
++    mtmc_ctx.name = fn.name();
++    mtmc_ctx.level = 1;
++  } else {
++    if (ctx->set_offset_seq) {
++      ctx->offset_seq = seq;
++      ctx->set_offset_seq = false;
++    }
++    mtmc_ctx.set_offset_seq = false;
++    mtmc_ctx.level = ctx->level + 1;
++    mtmc_ctx.tracing_hash_id = ctx->tracing_hash_id;
++    mtmc_ctx.offset_seq = ctx->offset_seq;
++    mtmc_ctx.name = std::to_string(seq - ctx->offset_seq);
++  }
++  if (ctx->level < 2) {
++    prof.PushCurrentCtx(mtmc_ctx);
++
++    // MTMC InterOp Start
++    using namespace mtmc;
++    struct TraceInfo trace_info;
++    trace_info.trace_id = ctx->tracing_hash_id;
++    trace_info.op = fn.name();
++    trace_info.current_id = hash_id_int;
++    if (root) {
++      trace_info.name = fn.name();
++      trace_info.parent_id = 0;
++      trace_info.parent_tid = 0;
++      trace_info.parent_pthread_id = 0;
++    } else {
++      trace_info.parent_id = ctx->ctx_hash_id;
++      trace_info.parent_tid = p_info.parent_tid;
++      trace_info.parent_pthread_id = p_info.parent_pthread_id;
++      trace_info.name = std::to_string(seq - ctx->offset_seq);
++    }
++    trace_info.inter_op = true;
++    prof.LogStart(trace_info, fn.name());
++  } else {
++    mtmc_ctx.ctx_hash_id = ctx->ctx_hash_id;
++    mtmc_ctx.name = ctx->name;
++    prof.PushCurrentCtx(mtmc_ctx);
++  }
++#endif
+   return out;
+ }

@@ -63,29 +63,168 @@ namespace util {
         return tsc * GetBaseFreq();
     }
 
-    std::vector<int> GetCurrAvailableCPUList() {
-        // TODO: Current implementation must use NUMA library (libnuma), later can be more flexable by reading /proc/self/status directly
-        std::vector<int> cpu_num;
-        auto ptr = (uint8_t *) (numa_all_cpus_ptr->maskp);
-        for (int i = 0; i < numa_all_cpus_ptr->size; i += (sizeof(uint8_t)*8) ) {
-            for (int j = 0; j < sizeof(uint8_t)*8; ++j) {
-                auto flag = ((*ptr) >> j) & 0b1;
-                if (flag) cpu_num.push_back(i+j);
+    // Code from https://github.com/iovisor/bcc/tree/master/src/cc/common.cc
+    std::vector<int> read_cpu_range(const std::string& path) {
+        std::ifstream cpus_range_stream { path };
+        std::vector<int> cpus;
+        std::string cpu_range;
+
+        while (std::getline(cpus_range_stream, cpu_range, ',')) {
+            std::size_t rangeop = cpu_range.find('-');
+            if (rangeop == std::string::npos) {
+                cpus.push_back(std::stoi(cpu_range));
             }
-            ptr += 1;
+            else {
+                int start = std::stoi(cpu_range.substr(0, rangeop));
+                int end = std::stoi(cpu_range.substr(rangeop + 1));
+                for (int i = start; i <= end; i++)
+                    cpus.push_back(i);
+            }
         }
-        return cpu_num;
+        return cpus;
+    }
+
+    std::vector<int> GetCurrAvailableCPUList() {
+        return read_cpu_range("/sys/devices/system/cpu/online");
     }
 
     int GetMaxNumOfCpus() {
-        // TODO: Current implementation requires NUMA library (libnuma), later can be more flexable
-        return numa_num_possible_cpus();
+        return read_cpu_range("/sys/devices/system/cpu/possible").size();
     }
 
     std::string PathJoin(const std::string& p1, const std::string& p2) {
         if (*(p1.end()-1) == '/') return p1 + p2;
         else return p1 + "/" + p2;
     }
+
+    void hex_dump(void *pBuff, unsigned int nLen) {
+        if (NULL == pBuff || 0 == nLen)
+        {
+            return;
+        }
+        const int nBytePerLine = 16;
+        unsigned char* p = (unsigned char*)pBuff;
+        char szHex[3*nBytePerLine+1] = {0};
+
+        printf("-------------------hex_dump---------------------\n");
+        for (unsigned int i=0; i<nLen; ++i)
+        {
+            int idx = 3 * (i % nBytePerLine);
+            if (0 == idx)
+            {
+                memset(szHex, 0, sizeof(szHex));
+            }
+            snprintf(&szHex[idx], 4, "%02x ", p[i]);
+
+            if (0 == ((i+1) % nBytePerLine))
+            {
+                printf("%s\n", szHex);
+            }
+        }
+
+        if (0 != (nLen % nBytePerLine))
+        {
+            printf("%s\n", szHex);
+        }
+
+        printf("------------------hex_dump end-------------------\n");
+    }
+
+    size_t GenHashId() {
+        static std::hash<std::string> hasher;
+        thread_local std::string pid;
+        if (pid.empty()) {
+            pid = std::to_string(getpid());
+        }
+        return hasher(pid + std::to_string(Env::rdtsc()));
+    }
+
+    std::vector<std::string> StringSplit(const std::string& s, char sep) {
+        std::vector<std::string> fields;
+        std::string field;
+        for (char i : s) {
+            if (i == sep) {
+                fields.push_back(field);
+                field.clear();
+            }
+            else {
+                field += i;
+            }
+        }
+        fields.push_back(field);
+        return fields;
+    };
+
+    std::vector<uint64_t> HexToVec(const std::string& hex_string) {
+
+        std::vector<uint64_t> nums;
+        std::stringstream ss(hex_string);
+        std::string token;
+        while (std::getline(ss, token, ',')) {
+            uint64_t num;
+            std::stringstream(token) >> std::hex >> num;
+            nums.push_back(num);
+        }
+
+//    for (auto& num : nums) {
+//        std::cout << std::hex << "0x" << num << std::endl;
+//    }
+
+        return nums;
+    }
+
+    int CheckConfigType(const std::string& path) {
+        std::string file_suffix = path.substr(path.find_last_of(".") + 1);
+
+        if (file_suffix == "json") {
+            return CFG_FILE_TYPE::JSON;
+        } else if (file_suffix == "txt") {
+            return CFG_FILE_TYPE::TXT;
+        } else {
+            return CFG_FILE_TYPE::UNKNOWN;
+        }
+    }
+
+    uint64_t ConvertTimeToNanoSeconds(const std::string& time_str) {
+        uint64_t ns;
+        uint64_t num;
+        std::string unit;
+        std::istringstream ss(time_str);
+
+        ss >> num >> unit;
+        if (unit == "ns") {
+            ns = num;
+        } else if (unit == "us") {
+            ns = num * 1000;
+        } else if (unit == "ms") {
+            ns = num * 1000000;
+        } else if (unit == "s") {
+            ns = num * 1000000000;
+        } else {
+            throw std::invalid_argument("Invalid time unit");
+        }
+
+        return ns;
+    }
+
+    std::vector<uint8_t> GenerateUniqueTraceId(uint64_t first_hash, uint64_t second_hash) {
+        if (first_hash == 0)
+            first_hash = mtmc::util::GenHashId();
+        if (second_hash == 0)
+            second_hash = mtmc::util::GenHashId();
+        std::vector<uint8_t> hash_arr(16);
+        memcpy(hash_arr.data(), &first_hash, sizeof(first_hash));
+        memcpy(hash_arr.data()+8, &second_hash, sizeof(second_hash));
+        return hash_arr;
+    };
+
+    std::vector<uint8_t> GenerateUniqueSpanId(uint64_t hash_int) {
+        if (hash_int == 0)
+            hash_int = mtmc::util::GenHashId();
+        std::vector<uint8_t> hash_arr(8);
+        memcpy(hash_arr.data(), &hash_int, sizeof(hash_int));
+        return hash_arr;
+    };
 
     // Path to a file. Need to check if the path before the file exists
     // CAN NOT HANDLE RACE CONDITION
@@ -131,4 +270,6 @@ namespace util {
     }*/
 
 }
+
+
 }

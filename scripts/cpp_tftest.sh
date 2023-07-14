@@ -16,16 +16,24 @@ filepath=$(cd "$(dirname "$0")"; pwd)
 projroot=$(cd $filepath; cd ..; pwd)
 
 cd $filepath
-./rebuild.sh
+#./rebuild.sh " -DBUILD_TEST=ON -DEBPF_CTX_SC=ON"
+./rebuild.sh " -DBUILD_TEST=ON"
+#./rebuild.sh "-DBUILD_TEST=ON -DEBPF_CTX_SC=ON -DCMAKE_BUILD_TYPE=Debug"
 
 mkdir $projroot/cpp/tests/test_logs/thp_info/
 rm -f $projroot/cpp/tests/test_logs/thp_info/*
 export MTMC_THREAD_EXPORT=$projroot/cpp/tests/test_logs/thp_info/
 
-logfolder=$projroot/cpp/tests/test_logs/mtmc_tf_tests_logs/
+logfolder=$projroot/cpp/tests/test_logs/mtmc_tf_tests_logs
 pbfile=$projroot/cpp/tests/dlrm_keras.pbtxt
 mkdir $logfolder
 
 export MTMC_CONFIG=$projroot/cpp/tests/configs/configExampleCaches.txt
 
-cd $projroot/build/bin && numactl -C 0-23,96-119 ./mtmc_tf_tests full 100 5 $logfolder $pbfile
+cd $projroot/build/bin && numactl -C 0-23,96-119 ./mtmc_tf_tests 100 10 8 8 $logfolder $pbfile
+
+thpfolder=$projroot/cpp/tests/test_logs/thp_info/
+configfile=$projroot/cpp/tests/configs/configExampleCaches.txt
+ebpffile=$logfolder/ebpf.txt
+
+cd $filepath && python $projroot/post_processing/post_processing.py -l $logfolder -t $thpfolder -c $configfile -e $ebpffile

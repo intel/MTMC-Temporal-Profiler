@@ -16,7 +16,10 @@ filepath=$(cd "$(dirname "$0")"; pwd)
 projroot=$(cd $filepath; cd ..; pwd)
 
 cd $filepath
-./rebuild.sh -DBUILD_TEST=ON
+#./rebuild.sh "-DBUILD_TEST=ON -DEBPF_CTX_SC=ON -DCMAKE_BUILD_TYPE=Debug"
+#./rebuild.sh "-DBUILD_TEST=ON -DEBPF_CTX_SC=ON"
+#./rebuild.sh "-DBUILD_TEST=ON -DEBPF_CTX_SC=ON"
+./rebuild.sh "-DBUILD_TEST=ON -DCMAKE_BUILD_TYPE=Debug"
 
 mkdir $projroot/cpp/tests/test_logs/thp_info/
 rm -f $projroot/cpp/tests/test_logs/thp_info/*

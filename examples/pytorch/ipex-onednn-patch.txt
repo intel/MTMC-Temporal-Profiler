@@ -1,0 +1,184 @@
+diff --git a/cmake/options.cmake b/cmake/options.cmake
+index fdbc1e994..094e0c7bc 100644
+--- a/cmake/options.cmake
++++ b/cmake/options.cmake
+@@ -40,6 +40,9 @@ option(DNNL_ENABLE_CONCURRENT_EXEC
+ option(DNNL_ENABLE_PRIMITIVE_CACHE "enables primitive cache." ON)
+     # enabled by default
+
++option(MTMC_PROFILER
++    "MTMC_PROFILER function" ON)
++
+ option(DNNL_ENABLE_MAX_CPU_ISA
+     "enables control of CPU ISA detected by oneDNN via DNNL_MAX_CPU_ISA
+     environment variable and dnnl_set_max_cpu_isa() function" ON)
+diff --git a/src/CMakeLists.txt b/src/CMakeLists.txt
+index 7460aef76..c9cfa8bfc 100644
+--- a/src/CMakeLists.txt
++++ b/src/CMakeLists.txt
+@@ -48,6 +48,11 @@ if(NOT DNNL_VERBOSE)
+     add_definitions_with_host_compiler(-DDISABLE_VERBOSE)
+ endif()
+
++if(MTMC_PROFILER)
++    add_definitions_with_host_compiler(-DMTMC_PROFILER)
++    list(APPEND EXTRA_SHARED_LIBS "libpfc.so")
++endif()
++
+ if(DNNL_ENABLE_CONCURRENT_EXEC)
+     add_definitions_with_host_compiler(-DDNNL_ENABLE_CONCURRENT_EXEC)
+ endif()
+diff --git a/src/common/dnnl_thread.hpp b/src/common/dnnl_thread.hpp
+index 97fd94705..02c1bc9a6 100644
+--- a/src/common/dnnl_thread.hpp
++++ b/src/common/dnnl_thread.hpp
+@@ -21,6 +21,11 @@
+ #include <functional>
+ #include <mutex>
+
++#ifdef MTMC_PROFILER
++#include "mtmc/mtmc_temp_profiler.h"
++#include "mtmc/util.h"
++#endif
++
+ #include "utils.hpp"
+ #include "z_magic.hpp"
+
+@@ -286,6 +291,9 @@ inline int adjust_num_threads(int nthr, dim_t work_amount) {
+ }
+
+ static inline void parallel(int nthr, const std::function<void(int, int)> &f) {
++#ifdef MTMC_PROFILER
++    mtmc::MTMCTemprolProfiler& prof = mtmc::MTMCTemprolProfiler::getInstance();
++#endif
+     nthr = adjust_num_threads(nthr, INT64_MAX);
+ #if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_SEQ
+     for (int i = 0; i < nthr; ++i) {
+@@ -295,14 +303,55 @@ static inline void parallel(int nthr, const std::function<void(int, int)> &f) {
+ #if defined(DNNL_ENABLE_ITT_TASKS)
+     auto task_primitive_kind = itt::primitive_task_get_current_kind();
+     bool itt_enable = itt::get_itt(itt::__itt_task_level_high);
++#endif
++#ifdef MTMC_PROFILER
++    auto p = prof.GetParamsInfo();
++    auto ctx = prof.CurrentCtx();
+ #endif
+     if (nthr == 1) {
++#ifdef MTMC_PROFILER
++        if (ctx) {
++            // MTMC IntraOp Start
++            using namespace mtmc;
++            struct TraceInfo trace_info;
++            trace_info.trace_id = ctx->tracing_hash_id;
++            trace_info.name = ctx->name;
++            trace_info.op = ctx->op;
++            trace_info.current_id = 0;
++            trace_info.parent_id = ctx->ctx_hash_id;
++            trace_info.inter_op = false;
++            trace_info.parent_tid = p.parent_tid;
++            trace_info.parent_pthread_id = p.parent_pthread_id;
++            prof.LogStart(trace_info, ctx->name);
++        }
++#endif
+         f(0, 1);
++#ifdef MTMC_PROFILER
++        if (ctx) {
++            prof.LogEnd();
++        }
++#endif
+         return;
+     }
+ #if DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_OMP
+ #pragma omp parallel num_threads(nthr)
+     {
++#ifdef MTMC_PROFILER
++        if (ctx) {
++            // MTMC IntraOp Start
++	    using namespace mtmc;
++            struct TraceInfo trace_info;
++            trace_info.trace_id = ctx->tracing_hash_id;
++            trace_info.name = ctx->name;
++            trace_info.op = ctx->op;
++            trace_info.current_id = 0;
++            trace_info.parent_id = ctx->ctx_hash_id;
++            trace_info.inter_op = false;
++            trace_info.parent_tid = p.parent_tid;
++            trace_info.parent_pthread_id = p.parent_pthread_id;
++            prof.LogStart(trace_info, ctx->name);
++        }
++#endif
+         int nthr_ = omp_get_num_threads();
+         int ithr_ = omp_get_thread_num();
+         assert(nthr_ == nthr);
+@@ -313,6 +362,12 @@ static inline void parallel(int nthr, const std::function<void(int, int)> &f) {
+ #if defined(DNNL_ENABLE_ITT_TASKS)
+         if (ithr_ && itt_enable) itt::primitive_task_end();
+ #endif
++#ifdef MTMC_PROFILER
++        if (ctx) {
++            prof.LogEnd();
++        }
++#endif
++
+     }
+ #elif DNNL_CPU_THREADING_RUNTIME == DNNL_RUNTIME_TBB
+     tbb::parallel_for(
+diff --git a/src/common/primitive_iface.cpp b/src/common/primitive_iface.cpp
+index e46712b8e..4b297e4dc 100644
+--- a/src/common/primitive_iface.cpp
++++ b/src/common/primitive_iface.cpp
+@@ -34,6 +34,11 @@
+ #include "stream.hpp"
+ #include "utils.hpp"
+
++#ifdef MTMC_PROFILER
++#include "mtmc/mtmc_temp_profiler.h"
++#include "mtmc/util.h"
++#endif
++
+ using namespace dnnl::impl;
+ using namespace dnnl::impl::status;
+ using namespace dnnl::impl::primitive_kind;
+@@ -123,7 +128,42 @@ status_t primitive_execute(
+                     primitive_iface->pd()->info(), duration_ms);
+         }
+     } else {
++#ifdef MTMC_PROFILER
++        mtmc::MTMCTemprolProfiler& prof = mtmc::MTMCTemprolProfiler::getInstance();
++        mtmc::Context mtmc_ctx;
++        auto p_info = prof.GetParamsInfo();
++        auto p_ctx = prof.CurrentCtx();
++        if (p_ctx) {
++            size_t hash_id_int = mtmc::util::GenHashId();
++            // construct the current the performance ctx
++            auto name_info = primitive_iface->pd()->info();
++            mtmc_ctx.is_default = false;
++            mtmc_ctx.name = p_ctx->name;
++            mtmc_ctx.op = name_info;
++            mtmc_ctx.ctx_hash_id = hash_id_int;
++            mtmc_ctx.tracing_hash_id = p_ctx->tracing_hash_id;
++            prof.PushCurrentCtx(mtmc_ctx);
++            // MTMC InterOp Start
++            using namespace mtmc;
++            struct TraceInfo trace_info;
++            trace_info.trace_id = p_ctx->tracing_hash_id;
++            trace_info.name = p_ctx->name;
++            trace_info.op = name_info;
++            trace_info.current_id = hash_id_int;
++            trace_info.parent_id = p_ctx->ctx_hash_id;
++            trace_info.parent_tid = p_info.parent_tid;
++            trace_info.parent_pthread_id = p_info.parent_pthread_id;
++            trace_info.inter_op = true;
++            prof.LogStart(trace_info, name_info);
++        }
++#endif
+         status = stream->enqueue_primitive(primitive_iface, ctx);
++#ifdef MTMC_PROFILER
++        if (p_ctx) {
++            prof.LogEnd();
++            prof.PopCurrentCtx();
++        }
++#endif
+     }
+
+ #if defined(DNNL_ENABLE_ITT_TASKS)

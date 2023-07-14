@@ -22,6 +22,7 @@ set(EXECUTABLE_OUTPUT_PATH ${mtmc_BINARY_DIR}/bin)
 set(LIBRARY_OUTPUT_PATH  ${mtmc_BINARY_DIR}/lib)
 
 set(CMAKE_SKIP_INSTALL_ALL_DEPENDENCY TRUE)
+set(INSTALL_RPATH_USE_LINK_PATH TRUE)
 
 message("Project binary dir:" ${mtmc_BINARY_DIR})
 message("Project source dir:" ${mtmc_SOURCE_DIR})

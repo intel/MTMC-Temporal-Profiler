@@ -11,6 +11,7 @@
 #include <chrono>
 #include <atomic>
 #include <dirent.h>
+#include <unistd.h>
 
 #define GET_METRIC(m, i) (((m) >> (i*8)) & 0xff)
 
