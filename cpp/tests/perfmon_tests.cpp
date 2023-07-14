@@ -58,7 +58,7 @@ void TestPerfMetricRead() {
     testutl::TopDownRet cal_start{}, cal_end{};
 
     ReadResult rd_ret;
-    auto status = pfc.PerCoreRead(ret_start, true, &rd_ret);
+    auto status = pfc.PerCoreRead(true, ret_start, &rd_ret);
     Dprintf("Number of events: %d\n", rd_ret.num_event);
     Dprintf("Slot: %lld\n", ret_start[0]);
     Dprintf("Metric: %lld\n", ret_start[1]);
@@ -69,7 +69,7 @@ void TestPerfMetricRead() {
     jobs.DoJob(testutl::Jobs::MULTIPLY, 1);
 
     // Read again
-    status = pfc.PerCoreRead(ret_end, false, &rd_ret);
+    status = pfc.PerCoreRead(false, ret_end, &rd_ret);
     Dprintf("Number of events: %d\n", rd_ret.num_event);
     Dprintf("Slot: %lld\n", ret_end[0]);
     Dprintf("Metric: %lld\n", ret_end[1]);
@@ -109,7 +109,7 @@ void TestPerfmonCollector() {
     uint64_t ret_end[GP_COUNTER];
 
     ReadResult rd_ret;
-    auto status = pfc.PerCoreRead(ret, true, &rd_ret);
+    auto status = pfc.PerCoreRead(true, ret, &rd_ret);
     Dprintf("Number of events: %d\n", rd_ret.num_event);
     for (int i = 0; i < rd_ret.num_event; ++i) {
         Dprintf("Ret: %lld\n", ret[i]);
@@ -119,7 +119,7 @@ void TestPerfmonCollector() {
     jobs.DoJob(testutl::Jobs::MULTIPLY, 1);
 
     // Read again
-    status = pfc.PerCoreRead(ret_end, false, &rd_ret);
+    status = pfc.PerCoreRead(false, ret_end, &rd_ret);
     Dprintf("Number of events: %d\n", rd_ret.num_event);
     for (int i = 0; i < rd_ret.num_event; ++i) {
         Dprintf("Ret: %lld\n", ret_end[i]);

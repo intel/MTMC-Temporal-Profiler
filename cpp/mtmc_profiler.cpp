@@ -169,7 +169,6 @@ namespace mtmc {
         log_info->int_prefix = global_int_prefix_.load(std::memory_order_relaxed);
 
         log_info->start_ts = Env::GetClockTimeNs();
-
         bool clear_flag = th_info.data_tracer.empty(); // Only clear cntr and reset group if no overlapping trace
         auto status = perfmon_collector_->PerCoreRead(clear_flag, log_info->ret_start, &log_info->rd_ret_start, &log_info->multiplex_idx);
         if (status == -1) {

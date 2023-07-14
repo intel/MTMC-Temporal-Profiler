@@ -856,7 +856,6 @@ class AutoAnalysis(object) :
         d.columns = ['suggestions']
         output_file = os.path.join(self._output_dir, output_file_name)
         d.to_csv(output_file)
-
     # schedule analysis function
     def _schedule_analysis(self) :
         list_info = []
@@ -1186,7 +1185,6 @@ class AutoAnalysisQPS(AutoAnalysis) :
             filter_info = []
             for name in self._hotspot_name_list :
                 all_total_area += self.__qps_info[name].GetTotalArea()
-
             for name in self._hotspot_name_list :
                 op = self.__qps_info[name].GetOp()
                 total_area = self.__qps_info[name].GetTotalArea()
@@ -1360,7 +1358,6 @@ class AutoAnalysisLatency(AutoAnalysis) :
         gt_t = self._groundtruth_timeline_data
         # latency groundtruth analysis
         t_latency_d = t.GetLatencyDistribution()
-        if gt_t is None :
             filter_info = []
             all_total_latency = 0.0
             for name in self._hotspot_name_list :
