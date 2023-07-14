@@ -20,6 +20,8 @@
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <atomic>
+#include <array>
+#include <map>
 
 #include "env.h"
 #include "util.h"
@@ -41,6 +43,8 @@ namespace mtmc {
          */
         int AddAttr(const InputConfig& configs);
 
+
+        int RegisterEvents(std::vector<InputConfig> cfg_vec);
         /**
          * Register all events that added by AddAttr func. Throw ErrorCodes if failed in perf_event_open or mmap
          * @return
@@ -117,13 +121,36 @@ namespace mtmc {
          */
         int CheckAndResetEventCtx();
 
+        int MultiplexStep();
+
+        int GetMultiplexIdx() const;
+
+#ifdef USE_PER_THREADS_PERF
+        int TryInitPerThreadAgent(std::vector<InputConfig>* cfg_from_collector);
+
+        ~PerfmonAgent();
+
+        int init_status = 0;
+#endif
+
     private:
         int num_events_here_ = 0;
         std::vector<InputConfig> cfg_vec_;
         std::vector<EventCtx> ctx_vec_;
         uint64_t pmc_result_[GP_COUNTER]{};
 
+        uint64_t multiplex_intv = 0; // Time when this event ctx expired and need to switch
+        uint64_t multiplex_deadline = 0; // Time when this event ctx expired and need to switch
+        int curr_cfg_idx = 0;
+
         static int perf_event_open(struct perf_event_attr *attr, pid_t pid, int cpu, int group_fd, unsigned long flags);
+
+#ifdef USE_PER_THREADS_PERF
+
+
+
+#endif
+
 
     };
 
@@ -141,6 +168,7 @@ namespace mtmc {
         PerfmonCollector();
 
         ~PerfmonCollector();
+
         /**
          * Initialize perfmon collector context with groups of config. It will use perf kernel api to init the pmc and
          * mmap the perf_mmap_pages.
@@ -149,26 +177,41 @@ namespace mtmc {
          * a range of cores
          * @return 1 for success
          */
-        int InitContext(std::vector<InputConfig> &input_config, std::vector<int> num_core);
+        int InitContext(std::vector<InputConfig> &input_config, const std::vector<int>& num_core, const ProfilerSetting& mtmc_setting);
 
         int CloseContext();
 
         /**
          * The function will read all event context's pmc on current core and store it in the uint64_t ret array.
          * @param ret: The array that stores the pmc results.
-         * @param is_start: is_start is true means the PerCoreRead will do some reset and init function to make sure the
+         * @param reset_flag: is_start is true means the PerCoreRead will do some reset and init function to make sure the
          * @param rd_ret: ReadResult. Stores the information like core id and event number for this reading.
          * correctness ot the final result.
          * @return 1 for success
          */
-        int PerCoreRead(bool is_start, uint64_t* ret, ReadResult* rd_ret);
+        int PerCoreRead(bool reset_flag, uint64_t* ret, ReadResult* rd_ret, int* multiplex_group_idx = nullptr);
+
+#ifdef USE_PER_THREADS_PERF
+
+        PerfmonAgent& GetPerThreadAgent();
+
+        std::vector<InputConfig> init_config;
+        std::atomic<int> init_cntr{0};
+
+#endif
 
         void DebugPrint();
 
+        std::vector<PerfmonAgent> DebugAcquirePerfmonAgent();
+
+        std::map<std::pair<int, int>, std::vector<std::pair<int, int>>> DebugAcquireEbpfCpuFdPairs();
+
     private:
+
         std::vector<std::vector<void*>> perf_mmap_pages_vec_;
         std::vector<PerfmonAgent> perfmon_agent_vec_;
         std::atomic<bool> ready_;
+
     };
 
 }

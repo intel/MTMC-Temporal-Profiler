@@ -14,3 +14,6 @@ cmake-build-debug/
 /cpp/tests/tf/
 post_processing/__pycache__/
 post_processing/sched_info
+/examples/tensorflow/dlrm_example
+/doc/raw_log/
+/backups/

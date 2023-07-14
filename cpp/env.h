@@ -17,11 +17,12 @@
 
 #include <sys/syscall.h>
 #include <unistd.h>
+#include <cmath>
 #include <cstdint>
 #include <vector>
 #include <time.h>
 #include <pthread.h>
-
+#include <cmath>
 
 #define GP_COUNTER 12
 #define DEBUG_MODE
@@ -36,6 +37,8 @@
 #define wmb() asm volatile("sfence" ::: "memory")
 #define cpl_barrier() asm volatile("" ::: "memory")
 
+#define USE_PER_THREADS_PERF
+
 // Compile settings
 //#define DETAILED_PRINT
 //#define DEBUG_PRINT
@@ -46,6 +49,14 @@ namespace mtmc {
     class Env {
     public:
 
+        union CoreId {
+            uint64_t full;
+            struct {
+                uint32_t pid;
+                uint32_t prefix;
+            } partial;
+        };
+
         static uint64_t rdtsc() {
             rmb();
             uint32_t lo, hi;
@@ -53,9 +64,10 @@ namespace mtmc {
             return ((uint64_t)hi << 32) | lo;
         }
 
-        static void GetCoreId(uint32_t *pid, uint32_t *prefix) {
+        static inline void GetCoreId(uint32_t *pid, uint32_t *prefix) {
             rmb();
-            __asm volatile ( "rdtscp\n" : "=c" (*pid) : : );
+//            __asm volatile ( "rdtscp\n" : "=c" (*pid) : : );
+            _rdtscp(pid);
 
             // Prefix indicate the socket and pid is the actural core number
             // For example, socket 0 core 2: pid = 2, prefix = 0; socket 1 core 2: pid = 2, prefix = 0b1000000011.
@@ -64,6 +76,17 @@ namespace mtmc {
 
             *prefix = (*pid) >> 12;
             *pid = ((*pid) << 20) >> 20;
+        }
+
+        static __attribute__((optimize("-O2"))) inline CoreId GetCoreIdNew() {
+//        static inline CoreId GetCoreIdNew() {
+            rmb();
+            CoreId id{};
+            asm volatile ( "rdtscp\n" : "=c" (id.partial.pid) : : );
+//            _rdtscp(&id.partial.pid);
+            id.partial.prefix = (id.partial.pid) >> 12;
+            id.partial.pid = ((id.partial.pid) << 20) >> 20;
+            return id;
         }
 
         static int64_t GetKtid() {
@@ -79,6 +102,30 @@ namespace mtmc {
             clock_gettime(CLOCK_REALTIME, &spc);
             return ((uint64_t)spc.tv_sec*1000*1000*1000 + (uint64_t)spc.tv_nsec);
         }
+
+        static uint64_t GetTSCFrequencyHz() {
+            static uint64_t ret;
+            if (ret == 0) {
+
+                uint64_t tsc_start = rdtsc();
+                uint64_t ns_start = GetClockTimeNs();
+
+                usleep(5 * 1e3);
+
+                uint64_t tsc_end = rdtsc();
+                uint64_t ns_end = GetClockTimeNs();
+
+                double temp = floor( ((double) (tsc_end - tsc_start) / (double) (ns_end - ns_start))*100 ) / 100;
+                ret = (uint64_t) (temp * 1e9);
+            }
+            return ret;
+
+            /// Other methods
+            /// CPUID -1 | grep clock
+            // cpuid -1 | grep -o -P '(?<=TSC\/clock ratio = )[0-9]+\/[0-9]+'
+            // cpuid -1 | grep -o 'nominal core crystal clock = [0-9]*' | cut -d " " -f6
+        };
+
 
     };
 

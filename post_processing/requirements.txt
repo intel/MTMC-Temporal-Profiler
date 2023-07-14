@@ -1,6 +1,2 @@
-numpy>=1.22.2
-werkzeug==2.2.3
-wheel==0.38.0
-setuptools==65.5.1
-protobuf==4.21.6
-tensorflow>=1.15.0
+numpy==1.22.2
+tensorflow==1.15.0

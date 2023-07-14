@@ -1,3 +1,17 @@
+#Copyright 2022 Intel Corporation
+#
+#Licensed under the Apache License, Version 2.0 (the "License");
+#you may not use this file except in compliance with the License.
+#You may obtain a copy of the License at
+#
+#http://www.apache.org/licenses/LICENSE-2.0
+#
+#Unless required by applicable law or agreed to in writing, software
+#distributed under the License is distributed on an "AS IS" BASIS,
+#WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#See the License for the specific language governing permissions and
+#limitations under the License.
+
 #!/usr/bin/python
 import json
 import networkx as nx
@@ -538,6 +552,7 @@ class TimelineData(object) :
     # process raw data of eigen_prof and generate the parent/children mapping information
     def ProcessEigenProf(self) :
         name_list = {}
+        help_dict = {}
         for elem in self.__detail_info :
             if ('args' in elem) and ('step_id' in elem['args']) and ('node_name' in elem['args']):
                 step_id = int(elem['args']['step_id'])
@@ -554,7 +569,10 @@ class TimelineData(object) :
                 if name in name_list[step_id] :
                     continue
                 input_name_list = list()
-                if name in self.__ops and ('args' in elem) :
+
+                if 'input_nodes' in elem['args'].keys():
+                    input_name_list = elem['args']['input_nodes']
+                elif name in self.__ops and ('args' in elem) :
                     d = self.__ops[name]['args']
                     index = 0
                     while True :
@@ -568,10 +586,14 @@ class TimelineData(object) :
                 name_list[step_id].append(name)
                 if step_id in self.__data :
                     self.__data[step_id].append(d)
+                    help_dict[step_id][name] = d
                 else :
                     self.__data[step_id] = []
                     self.__data[step_id].append(d)
+                    help_dict[step_id] = {}
+                    help_dict[step_id][name] = d
 
+        print('process inter data done.')
         for elem in self.__eigen_prof :
             if ('args' in elem) and ('step_id' in elem['args']) :
                 step_id = int(elem['args']['step_id'])
@@ -583,29 +605,37 @@ class TimelineData(object) :
                 tid = int(elem['tid'])
                 name = elem['args']['node_name']
                 #tmam data
-                retiring = float(elem['args']['TMA_1_..Retiring(%)'])
-                bad_speculation = float(elem['args']['TMA_1_..Bad Speculation(%)'])
-                front_end_bound = float(elem['args']['TMA_1_..Front-End bound(%)'])
-                back_end_bound = float(elem['args']['TMA_1_..Back-End Bound(%)'])
-                branch_misperd = float(elem['args']['TMA_2_..Branch Misprediction(%)'])
-                machine_clears = float(elem['args']['TMA_2_..Machine Clear(%)'])
-                fetch_latency = float(elem['args']['TMA_2_..Fetch Lat(%)'])
-                fetch_bandwidth = float(elem['args']['TMA_2_..Fetch BW(%)'])
-                memory_bound = float(elem['args']['TMA_2_..Mem Bound(%)'])
-                core_bound = float(elem['args']['TMA_2_..Core Bound(%)'])
-                l1_bound = float(elem['args']['TMA_3..L1_Bound(%)'])
-                l2_bound = float(elem['args']['TMA_3..L2_Bound(%)'])
-                l3_bound = float(elem['args']['TMA_3..L3_Bound(%)'])
-                dram_bound = float(elem['args']['TMA_3..DRAM_Bound(%)'])
-                store_bound = float(elem['args']['TMA_3..Store_Bound(%)'])
+                retiring = float(elem['args']['Met-.metric_TMA_Retiring(%)'])
+                bad_speculation = float(elem['args']['Met-.metric_TMA_Bad_Speculation(%)'])
+                front_end_bound = float(elem['args']['Met-.metric_TMA_Frontend_Bound(%)'])
+                back_end_bound = float(elem['args']['Met-.metric_TMA_Backend_Bound(%)'])
+                branch_misperd = float(elem['args']['Met-.metric_TMA_..Branch_Mispredicts(%)'])
+                machine_clears = float(elem['args']['Met-.metric_TMA_..Machine_Clears(%)'])
+                fetch_latency = float(elem['args']['Met-.metric_TMA_..Fetch_Latency(%)'])
+                fetch_bandwidth = float(elem['args']['Met-.metric_TMA_..Fetch_Bandwidth(%)'])
+                memory_bound = float(elem['args']['Met-.metric_TMA_..Memory_Bound(%)'])
+                core_bound = float(elem['args']['Met-.metric_TMA_..Core_Bound(%)'])
+                l1_bound = float(elem['args']['Met-.metric_TMA_....L1_Bound(%)'])
+                l2_bound = float(elem['args']['Met-.metric_TMA_....L2_Bound(%)'])
+                l3_bound = float(elem['args']['Met-.metric_TMA_....L3_Bound(%)'])
+                dram_bound = float(elem['args']['Met-.metric_TMA_....DRAM_Bound(%)'])
+                store_bound = float(elem['args']['Met-.metric_TMA_....Store_Bound(%)'])
+
                 t = TmamData(retiring, bad_speculation, front_end_bound, back_end_bound, branch_misperd, machine_clears, fetch_latency, fetch_bandwidth, memory_bound, core_bound, l1_bound, l2_bound, l3_bound, dram_bound, store_bound)
                 d = ProfileData(name, op_type, start_time, dur, tid, t, list(), list())
-                for e in self.__data[step_id] :
-                    if e.GetName() == name :
-                        children_list = e.GetChildrenList()
-                        children_list.append(d)
-                        d.SetOp(e.GetOp())
-                        e.SetChildrenList(children_list)
+                if name in help_dict[step_id] :
+                    e = help_dict[step_id][name]
+                    children_list = e.GetChildrenList()
+                    children_list.append(d)
+                    d.SetOp(e.GetOp())
+                    e.SetChildrenList(children_list)
+                #for e in self.__data[step_id] :
+                #    if e.GetName() == name :
+                #        children_list = e.GetChildrenList()
+                #        children_list.append(d)
+                #        d.SetOp(e.GetOp())
+                #        e.SetChildrenList(children_list)
+        print('process intra data done.')
 
     # get the list of step id in the eigen prof data
     def GetStepIdList(self) :
@@ -748,6 +778,84 @@ class AutoAnalysis(object) :
     def _generate_hotspot_list(self) :
         pass
 
+    def _generate_suggestions(self, filter_info , output_file_name) :
+        t = self._timeline_data
+        l3_store_node_names = []
+        l3_store_info = {}
+        l3_dram_node_names = []
+        l3_dram_info = {}
+        l3_l3_node_names = []
+        l3_l3_info = {}
+        fusion_node_names = []
+        cat_node_names = []
+        t_tmam_d = t.GetTmamDistribution()
+        for name in self._hotspot_name_list :
+            tmam_d = t_tmam_d[name]
+            l3_store = round(np.percentile(tmam_d.GetLevel3StoreBoundD().GetRawData(), 50), 2)
+            l3_dram =  round(np.percentile(tmam_d.GetLevel3DramBoundD().GetRawData(), 50), 2)
+            l3_l3 =  round(np.percentile(tmam_d.GetLevel3L3BoundD().GetRawData(), 50), 2)
+            if (l3_store > 25) and (name in filter_info) :
+                l3_store_node_names.append(name)
+                l3_store_info[name] = l3_store
+            if (l3_dram > 25) and (name in filter_info) :
+                l3_dram_node_names.append(name)
+                l3_dram_info[name] = l3_dram
+            if (l3_l3 > 25) and (name in filter_info) :
+                l3_l3_node_names.append(name)
+                l3_l3_info[name] = l3_l3
+        step_id_list = self._timeline_data.GetStepIdList()
+        data = self._timeline_data.GetData()
+        step_id = step_id_list[int(len(step_id_list)/2)]
+        for name in l3_dram_node_names :
+            for e in data[step_id] :
+                if name == e.GetName() :
+                    for input_name in e.GetInputNameList() :
+                        if input_name in l3_store_node_names :
+                            for elem in data[step_id] :
+                                if input_name == elem.GetName() :
+                                    if elem.GetOp() != "_MklReshape" and elem.GetOp() != "Reshape" :
+                                        fusion_node_names.append((input_name,name))
+                        for elem in data[step_id] :
+                            if input_name == elem.GetName() :
+                                if elem.GetOp() == "_MklReshape" or elem.GetOp() == "Reshape" :
+                                    for i in elem.GetInputNameList() :
+                                        if i in l3_store_node_names :
+                                            fusion_node_names.append((i,name))
+
+        for name in l3_dram_node_names :
+            for step_id in step_id_list :
+                for e in data[step_id] :
+                    if name == e.GetName() :
+                        s_t = e.GetStartTime()
+                        dur = e.GetDur()
+                        for n in l3_l3_node_names :
+                            for elem in data[step_id] :
+                                if n == elem.GetName() :
+                                    if (s_t > elem.GetStartTime() and s_t < (elem.GetStartTime() + elem.GetDur())) \
+                                            or (elem.GetStartTime() > s_t and elem.GetStartTime() < (s_t + dur)) :
+                                        cat_node_names.append((name, n))
+        suggestions = []
+        #fusion_node_names = list(set(fusion_node_names))
+        for e in fusion_node_names :
+            c = "fusion suggestion : (" + e[0] + " l3 store bound -- " + str(l3_store_info[e[0]]) + "% ," + e[1] + " l3 dram bound -- " + str(l3_dram_info[e[1]]) +"% )"
+            suggestions.append(c)
+
+        for e in l3_dram_node_names :
+            c = "enable low precision(f16/bf16) : " + e + " l3 dram bound -- " + str(l3_dram_info[e]) + "%"
+            suggestions.append(c)
+
+        for e in l3_store_node_names :
+            c = "enable low precision(f16/bf16) : " + e + " l3 store bound -- " + str(l3_store_info[e]) + "%"
+            suggestions.append(c)
+
+        cat_node_names = list(set(cat_node_names))
+        for e in cat_node_names :
+            c = "RDT optimization for: (" + e[0] + "," + e[1] + ")"
+            suggestions.append(c)
+        d = pd.DataFrame(np.array(suggestions))
+        d.columns = ['suggestions']
+        output_file = os.path.join(self._output_dir, output_file_name)
+        d.to_csv(output_file)
     # schedule analysis function
     def _schedule_analysis(self) :
         list_info = []
@@ -817,53 +925,53 @@ class AutoAnalysis(object) :
 
                 raw_array = []
                 retiring_raw = np.array(tmam_d.GetLevel1RetiringD().GetRawData())
-                raw_array.append((retiring_raw))
+                raw_array.append((retiring_raw,))
 
                 bad_speculation_raw = np.array(tmam_d.GetLevel1BadSpeculationD().GetRawData())
-                raw_array.append((bad_speculation_raw))
+                raw_array.append((bad_speculation_raw,))
 
                 front_end_raw = np.array(tmam_d.GetLevel1FrontEndBoundD().GetRawData())
-                raw_array.append((front_end_raw))
+                raw_array.append((front_end_raw,))
 
                 back_end_raw = np.array(tmam_d.GetLevel1BackEndBoundD().GetRawData())
-                raw_array.append((back_end_raw))
+                raw_array.append((back_end_raw,))
 
                 branch_misperd_raw = np.array(tmam_d.GetLevel2BranchMisperdD().GetRawData())
-                raw_array.append((branch_misperd_raw))
+                raw_array.append((branch_misperd_raw,))
 
                 machine_clears_raw = np.array(tmam_d.GetLevel2MachineClearsD().GetRawData())
-                raw_array.append((machine_clears_raw))
+                raw_array.append((machine_clears_raw,))
 
                 fetch_latency_raw = np.array(tmam_d.GetLevel2FetchLatencyD().GetRawData())
-                raw_array.append((fetch_latency_raw))
+                raw_array.append((fetch_latency_raw,))
 
                 fetch_bandwidth_raw = np.array(tmam_d.GetLevel2FetchBandwidthD().GetRawData())
-                raw_array.append((fetch_bandwidth_raw))
+                raw_array.append((fetch_bandwidth_raw,))
 
                 memory_bound_raw = np.array(tmam_d.GetLevel2MemoryBoundD().GetRawData())
-                raw_array.append((memory_bound_raw))
+                raw_array.append((memory_bound_raw,))
 
                 core_bound_raw = np.array(tmam_d.GetLevel2CoreBoundD().GetRawData())
-                raw_array.append((core_bound_raw))
+                raw_array.append((core_bound_raw,))
 
                 l1_bound_raw = np.array(tmam_d.GetLevel3L1BoundD().GetRawData())
-                raw_array.append((l1_bound_raw))
+                raw_array.append((l1_bound_raw,))
 
                 l2_bound_raw = np.array(tmam_d.GetLevel3L2BoundD().GetRawData())
-                raw_array.append((l2_bound_raw))
+                raw_array.append((l2_bound_raw,))
 
                 l3_bound_raw = np.array(tmam_d.GetLevel3L3BoundD().GetRawData())
-                raw_array.append((l3_bound_raw))
+                raw_array.append((l3_bound_raw,))
 
                 dram_bound_raw = np.array(tmam_d.GetLevel3DramBoundD().GetRawData())
-                raw_array.append((dram_bound_raw))
+                raw_array.append((dram_bound_raw,))
 
                 store_bound_raw = np.array(tmam_d.GetLevel3StoreBoundD().GetRawData())
-                raw_array.append((store_bound_raw))
+                raw_array.append((store_bound_raw,))
 
                 p50_array = []
                 for i in raw_array :
-                    p50 = np.percentile(i[0], 50)
+                    p50 = round(np.percentile(i[0], 50), 2)
                     p50_array.append(p50)
                 info = []
                 info.append(name)
@@ -1073,15 +1181,23 @@ class AutoAnalysisQPS(AutoAnalysis) :
         # qps groundtruth analysis
         t_qps_area_d = t.GetQpsAreaDistribution()
         if gt_t is None :
+            all_total_area = 0.0
+            filter_info = []
+            for name in self._hotspot_name_list :
+                all_total_area += self.__qps_info[name].GetTotalArea()
             for name in self._hotspot_name_list :
                 op = self.__qps_info[name].GetOp()
                 total_area = self.__qps_info[name].GetTotalArea()
                 qps_area_d = t_qps_area_d[name]
-                list_info.append((name, op, total_area))
+                ratio = round(total_area/all_total_area, 2)
+                if ratio >= 0.02 :
+                    list_info.append((name, op, round(ratio * 100, 2)))
+                    filter_info.append(name)
             d = pd.DataFrame(np.array(list_info))
             d.columns = ['node_name', 'op', 'area(sort)']
             output_file = os.path.join(self._output_dir, 'qps_analysis_result.csv')
             d.to_csv(output_file)
+            super(AutoAnalysisQPS, self)._generate_suggestions(filter_info, 'qps_opt_suggestion.csv')
         else :
             gt_t_qps_area_d = gt_t.GetQpsAreaDistribution()
 
@@ -1228,8 +1344,9 @@ class AutoAnalysisLatency(AutoAnalysis) :
         data_info.sort(key = lambda t: t.GetTotalArea(), reverse=True)
         ret = []
         for e in data_info :
-            ret.append(e.GetName())
-            self.__latency_info[e.GetName()] = e
+            if e.GetOp() != "_MklReshape" or e.GetOp() != "Reshape" :
+                ret.append(e.GetName())
+                self.__latency_info[e.GetName()] = e
         return ret
 
     # hw resource analysis function
@@ -1241,16 +1358,22 @@ class AutoAnalysisLatency(AutoAnalysis) :
         gt_t = self._groundtruth_timeline_data
         # latency groundtruth analysis
         t_latency_d = t.GetLatencyDistribution()
-        if gt_t is None :
+            filter_info = []
+            all_total_latency = 0.0
+            for name in self._hotspot_name_list :
+                all_total_latency += self.__latency_info[name].GetTotalArea()
             for name in self._hotspot_name_list :
                 op = self.__latency_info[name].GetOp()
                 total_latency = self.__latency_info[name].GetTotalArea()
-
-                list_info.append((name, op, total_latency))
+                ratio = round(total_latency/all_total_latency, 2)
+                if ratio >= 0.02 :
+                    list_info.append((name, op, round(ratio * 100, 2)))
+                    filter_info.append(name)
             d = pd.DataFrame(np.array(list_info))
             d.columns = ['node_name', 'op', 'latency(sort)']
             output_file = os.path.join(self._output_dir, 'latency_analysis_result.csv')
             d.to_csv(output_file)
+            super(AutoAnalysisLatency, self)._generate_suggestions(filter_info, 'latency_opt_suggestion.csv')
         else :
             gt_t_latency_d = gt_t.GetLatencyDistribution()
 

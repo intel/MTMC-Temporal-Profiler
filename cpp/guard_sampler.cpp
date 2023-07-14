@@ -44,7 +44,7 @@ namespace mtmc {
             clock_gettime(CLOCK_MONOTONIC, &timeinfo.time_mo[0]);
             clock_gettime(CLOCK_REALTIME, &timeinfo.time_rl[0]);
             sampler_pid = pid;
-            Dprintf(FGRN("Subprocess {%d} start collecting context switch information\n"));
+            Dprintf(FGRN("Subprocess {%d} start collecting context switch information\n"), (int)pid);
         }
     }
 

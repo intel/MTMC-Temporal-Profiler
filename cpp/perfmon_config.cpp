@@ -14,7 +14,19 @@
 
 #include "perfmon_config.h"
 
+using json = nlohmann::json;
+
 namespace mtmc {
+
+    uint64_t X86Config(int event, int umask, int inv, int cmask, int edge) {
+        x86_pmu_config conf{};
+        conf.bits.event = event;
+        conf.bits.umask = umask;
+        conf.bits.inv = inv;
+        conf.bits.cmask = cmask;
+        conf.bits.edge = edge;
+        return conf.value;
+    };
 
     int PerfmonConfig::ReadConfig(const std::string &file_path, std::vector<InputConfig> *config_vec, ProfilerSetting* mtmc_setting) {
 
@@ -23,6 +35,8 @@ namespace mtmc {
             return -1;
         }
 
+        mtmc_setting->cfg_type = util::TXT;
+
         struct InputConfig a = {
                 .event_num = 0,
                 .names = {"","","","","","","",""},
@@ -30,6 +44,7 @@ namespace mtmc {
                 .cpu_arr = {0,0,0,0,0,0,0,0,0,0,0,0},
                 .pid_arr = {-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1},
                 .fd = {-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1},
+                .group_name = "GroupDefaultName",
                 .rd_setting = {
                     .min_reset_intrvl_ns = -1,
                     .add_offset = true,
@@ -43,10 +58,13 @@ namespace mtmc {
             a.attr_arr[i].type = PERF_TYPE_RAW;
             a.attr_arr[i].size = sizeof(perf_event_attr);
             a.attr_arr[i].exclude_kernel = 1;
+            if (i == 0) {
+                a.attr_arr[i].pinned = 1;
+            }
         }
 
         std::ifstream cfg_input;
-        int fd = open(file_path.c_str(), O_RDWR|O_NOFOLLOW);
+        int fd = open(file_path.c_str(), O_RDONLY|O_NOFOLLOW);
         if (fd < 0) {
             Dprintf(FRED("Invalid config file. File is not exist or it is a symbolic link\n"));
             return -1;
@@ -170,14 +188,6 @@ namespace mtmc {
             return -1;
         }
 
-        /// Debug, print output here:
-        for (auto& cfg : *config_vec) {
-            Dprintf("Config: %d event(s)\n", cfg.event_num);
-            for (int i = 0; i < cfg.event_num; ++i) {
-                Dprintf("Event %d, %s, %#010x\n", i, cfg.names[i].c_str(), cfg.attr_arr[i].config);
-            }
-        }
-
         close(fd);
         return 1;
     }
@@ -191,6 +201,7 @@ namespace mtmc {
                 .cpu_arr = {0,0,0,0,0,0,0,0,0,0,0,0},
                 .pid_arr = {-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1},
                 .fd = {-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1},
+                .group_name = "DefaultGroupName",
                 .rd_setting = {
                         .min_reset_intrvl_ns = -1,
                         .add_offset = false,
@@ -203,23 +214,199 @@ namespace mtmc {
         a.attr_arr[0].type = PERF_TYPE_RAW;
         a.attr_arr[0].size = sizeof(struct perf_event_attr);
         a.attr_arr[0].config = 0x400;
-        a.attr_arr[0].exclude_kernel = true;
+        a.attr_arr[0].exclude_kernel = 1;
+        a.attr_arr[0].pinned = 1;
 
         a.names[1] = "Perf_Metrics";
         a.attr_arr[1].type = PERF_TYPE_RAW;
         a.attr_arr[1].size = sizeof(struct perf_event_attr);
         a.attr_arr[1].config = 0x8000;
-        a.attr_arr[1].exclude_kernel = true;
+        a.attr_arr[1].exclude_kernel = 1;
+        a.attr_arr[1].pinned = 0;
 
         a.names[2] = "INT_MISC.UOP_DROPPING";
         a.attr_arr[2].type = PERF_TYPE_RAW;
         a.attr_arr[2].size = sizeof(struct perf_event_attr);
         a.attr_arr[2].config = X86_CONFIG(.event=0xad, .umask=0x10, .inv=0, .cmask=0);
-        a.attr_arr[2].exclude_kernel = true;
+        a.attr_arr[2].exclude_kernel = 1;
+        a.attr_arr[2].pinned = 0;
 
         a.rd_setting.min_reset_intrvl_ns = reset_intrvl_ns;
 
         config_vec->push_back(a);
+
+//        for (auto& cfg : *config_vec) {
+//            cfg.attr_arr[0].inherit = 1;
+//        }
+
+//        for (auto& cfg : *config_vec) {
+//            for (int j = 0; j < cfg.event_num; ++j) {
+//                cfg.attr_arr[j].inherit = 1;
+//                cfg.pid_arr[j] = 0;
+//                cfg.cpu_arr[j] = -1;
+//            }
+//        }
+
+        return 1;
+    }
+
+    int PerfmonConfig::ReadConfigJson(const std::string &file_path, std::vector<InputConfig> *config_vec, ProfilerSetting *mtmc_setting) {
+
+        if (config_vec == nullptr || mtmc_setting == nullptr) {
+            Dprintf(FRED("Null pointer is passed to the function, read config failed\n"));
+            return -1;
+        }
+
+        mtmc_setting->cfg_type = util::JSON;
+
+        struct InputConfig a = {
+                .event_num = 0,
+                .names = {"","","","","","","",""},
+                .attr_arr = {{0},{0},{0},{0},{0},{0},{0},{0},{0},{0},{0},{0}},
+                .cpu_arr = {0,0,0,0,0,0,0,0,0,0,0,0},
+                .pid_arr = {-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1},
+                .fd = {-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1,-1},
+                .group_name = "GroupDefaultName",
+                .rd_setting = {
+                        .min_reset_intrvl_ns = 1, // TODO Reset intv hdcd
+                        .add_offset = false,
+                        .sign_ext = false
+                }
+        };
+
+        // Reset the event attrs
+        for (int i = 0; i < GP_COUNTER; ++i) {
+            memset(&(a.attr_arr[i]), 0, sizeof(perf_event_attr));
+            a.attr_arr[i].type = PERF_TYPE_RAW;
+            a.attr_arr[i].size = sizeof(perf_event_attr);
+            a.attr_arr[i].exclude_kernel = 1;
+            if (i == 0) {
+                a.attr_arr[i].pinned = 1;
+            }
+        }
+
+        std::ifstream in(file_path);
+        json j;
+        in >> j;
+
+        /*
+         *  {
+         *      "Configs": [
+         *          {
+         *              "Events": {
+         *                  "CPU_CLOCK_THREADS": "00,01,02,03,04", (event,umask,cmask,inv,edge)
+         *                  ...
+         *              },
+         *              "Metrics": [str0, str1, str2...]
+         *          },
+         *          {
+         *              ...
+         *          },
+         *      ],
+         *      "SwitchIntvl": "30s"/"20ms"/"10ns",
+         *      "ExportMode": 0/1/2/3
+         *  }
+         */
+
+        try {
+            std::vector<std::map<std::string, std::string>> all_configs;
+            std::vector<std::vector<std::string>> all_metrics;
+            std::string switch_intvl;
+
+            if (!j.contains("Configs"))
+                throw std::runtime_error("No \"Configs\" key works in the MTMC config json");
+
+            /* ------------- General Settings -------------- */
+            // Multiplx Interval
+            if (!j.contains("SwitchIntvl")) {
+                switch_intvl = "200ms";
+            }
+            else {
+                switch_intvl = j["SwitchIntvl"];
+            }
+
+            // Export Mode:
+            if (j.contains("ExportMode")) {
+                mtmc_setting->export_mode = j["ExportMode"];
+                if (!(mtmc_setting->export_mode >= 0 && mtmc_setting->export_mode <=3)) {
+                    throw std::runtime_error("Invalid export mode. Export mode should be 0,1,2 or 3");
+                }
+            }
+            else {
+                mtmc_setting->export_mode = 0;
+            }
+
+            // Trace Hash:
+            if (j.contains("TraceHash")) {
+                mtmc_setting->trace_hash = j["TraceHash"];
+            }
+            else {
+                mtmc_setting->trace_hash = 0;
+            }
+
+            // Configs id:
+            if (j.contains("ConfigsId")) {
+                mtmc_setting->configs_id = j["ConfigsId"];
+            }
+            else {
+                mtmc_setting->configs_id = -1;
+            }
+
+            // OverallCnsts:
+            if (j.contains("OverallCnsts")) {
+                for (auto& elem : j["OverallCnsts"].items()) {
+                    mtmc_setting->cnst_var.insert(elem.value().get<std::string>());
+                }
+            }
+            /* ------------- General Settings Ends -------------- */
+
+            /* ------------- Perfmon Event Settings ---------------- */
+            int cntr = 0;
+            for (auto& elem : j["Configs"]) {
+                printf("== Config %d ==\n", cntr);
+                all_configs.emplace_back();
+                all_metrics.emplace_back();
+                auto temp_cfg = a;
+                temp_cfg.group_name = std::to_string(cntr);
+                temp_cfg.multiplex_intv = util::ConvertTimeToNanoSeconds(switch_intvl);
+
+                int i = 0;
+
+                for (auto& evt : elem["EventList"].items()) {
+                    const auto& evt_name = evt.value().get<std::string>();
+                    const auto& evt_cfg = elem["Events"][evt_name];
+
+                    printf("Event: %s\n", evt_name.c_str());
+
+                    temp_cfg.names[i] = std::string(evt_name);
+                    auto hw_evt_cfg = util::HexToVec(evt_cfg.get<std::string>());
+                    if (hw_evt_cfg.size() != 5)
+                        throw std::runtime_error("Error. Event " + evt_name + " do not have proper counter info.\n");
+                    temp_cfg.attr_arr[i].config = X86Config(hw_evt_cfg[0], hw_evt_cfg[1], hw_evt_cfg[2], hw_evt_cfg[3], hw_evt_cfg[4]);
+                    temp_cfg.names[i] = evt_name;
+                    all_configs.back().insert({std::string(evt_name), std::string(evt_cfg.get<std::string>())});
+                    temp_cfg.event_num++;
+                    ++i;
+                };
+
+                elem["EventList"].clear();
+                for (int ev_num = 0; ev_num < temp_cfg.event_num; ++ev_num) {
+                    elem["EventList"].push_back(temp_cfg.names[ev_num]);
+                }
+
+                config_vec->push_back(temp_cfg);
+                cntr++;
+            }
+        }
+        catch(const std::exception& e) {
+            printf(FRED("%s\n"), e.what());
+            return -1;
+        };
+
+        in.close();
+
+        std::ofstream out(file_path, std::ofstream::out);
+        out << j.dump(4);
 
         return 1;
     }

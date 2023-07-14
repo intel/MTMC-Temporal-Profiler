@@ -27,6 +27,12 @@
 
 #include <random>
 
+#undef EBPF_CTX_SC
+#ifdef EBPF_CTX_SC
+#include "ebpf_sampler.h"
+#include "ebpf_common.h"
+#endif
+
 using namespace tensorflow;
 
 struct SessConfig {
@@ -132,41 +138,20 @@ GraphDef LoadFromPbtxt(tensorflow::Session* session, const std::string& pb_path)
 }
 
 int ProcessOutput(const std::string& log_folder) {
-    auto path_to_threadpool_info = getenv("MTMC_THREAD_EXPORT");
-    if (!path_to_threadpool_info) {
-        Dprintf(FRED("MTMC_THREAD_EXPORT not exist!\n"));
-        return -1;
-    }
-    DIR* dir = opendir(path_to_threadpool_info);
 
-    if (!dir) {
-        Dprintf(FRED("Can not open directory: %s\n"), path_to_threadpool_info);
-        return -1;
-    }
-
-    std::vector<mtmc::MTMCTemprolProfiler*> profilers;
-    while(true) {
-        auto read = readdir(dir);
-        if (!read) break;
-        if (!strcmp(read->d_name, "..") || !strcmp(read->d_name, ".")) {
-            Dprintf("Exclude file %s\n", read->d_name);
-        }
-        else {
-            Dprintf("Include file %s\n", read->d_name);
-            profilers.push_back(reinterpret_cast<mtmc::MTMCTemprolProfiler*>(atol(read->d_name)));
-        }
-    }
-
-    for (auto& p : profilers) {
-        p->Finish(mtmc::util::PathJoin(log_folder,"mtmc_raw_" + std::to_string(reinterpret_cast<int64_t>(p))));
-    }
-
-    closedir(dir);
+    mtmc::MTMCTemprolProfiler& prof = mtmc::MTMCTemprolProfiler::getInstance();
+    prof.Finish(mtmc::util::PathJoin(log_folder, "mtmc_raw_" + std::to_string(reinterpret_cast<int64_t>(&prof))));
 
     return 1;
 }
 
 void TestDlrm(SessConfig cfg, const std::string& log_folder) {
+
+    // All Threadpools sharing one instance of MTMC Temporal Profiler
+    mtmc::MTMCTemprolProfiler& prof = mtmc::MTMCTemprolProfiler::getInstance();
+
+    // Disable the profiler globally. Only enable it at the place of interest
+    prof.GlobalProfilerDisable();
 
     /// Create session and load graph
     Session* sess;
@@ -217,7 +202,19 @@ void TestDlrm(SessConfig cfg, const std::string& log_folder) {
         std::vector<Tensor> out;
         Status wst;
         int timeline_cntr = 0;
+
+        prof.GlobalProfilerEnable();
+
         for (int i = 0; i < cfg.itr; ++i) {
+
+            // Set the int prefix to represent the iteration number
+            prof.SetGlobalIntPrefix(i);
+
+            // Print profiler storage usage every 10 iterations
+            if (i % 10 == 0) {
+                printf(FYEL("Iteration: %d. MTMC-StorageSize uses: %.2f MB\n"), i, (double)prof.StorageSize()/1e6);
+            }
+
             if (idx == 0 && (i == (int)(cfg.itr/2) || (timeline_cntr > 0 && timeline_cntr < cfg.timeline_itr) )) {
                 wst = sess->Run(ro_trace, data, {output_node}, {}, &out, &rm);
                 timeline_cntr += 1;
@@ -226,6 +223,9 @@ void TestDlrm(SessConfig cfg, const std::string& log_folder) {
                 wst = sess->Run(data,{output_node}, {}, &out);
             }
         }
+
+        prof.GlobalProfilerDisable();
+
         std::cout << wst.ToString() << std::endl;
     };
 
@@ -234,6 +234,24 @@ void TestDlrm(SessConfig cfg, const std::string& log_folder) {
         ths[i] = std::thread(worker, -1);
     }
     for (auto& th : ths) th.join();
+
+#ifdef EBPF_CTX_SC
+    auto& prof = mtmc::MTMCTemprolProfiler::getInstance();
+    auto collector = prof.DebugGetProfilerRef().DebugAcquirePerfmonCollector();
+    mtmc::EbpfCtxScConfig ebpf_cfg;
+    ebpf_cfg.PerCoreStorageLength = 30000;
+    ebpf_cfg.StorageMaxByte = 10e9;
+    ebpf_cfg.WeakUpIntvMs = 250;
+    auto& ebpf_collector = mtmc::EbpfSampler::GetInstance();
+    auto ebpf_status = ebpf_collector.EbpfCtxScInit(ebpf_cfg, mtmc::util::GetCurrAvailableCPUList(), collector->DebugAcquireEbpfCpuFdPairs());
+    assert(ebpf_status == 1);
+    sleep(5);
+
+    Dprintf(FGRN("Start EBPF Init done\n"));
+    ebpf_collector.EbpfCtxScStart();
+    sleep(1);
+#endif
+
     /// RUN
     auto time_st = testutl::GetTimeStamp();
     for (int i = 0; i < cfg.inst; ++i) {
@@ -251,6 +269,14 @@ void TestDlrm(SessConfig cfg, const std::string& log_folder) {
     ofs << rm.step_stats().SerializeAsString();
     ofs.close();
     rm.step_stats().SerializeAsString();
+
+#ifdef EBPF_CTX_SC
+    sleep(1);
+    ebpf_collector.EbpfCtxScStop();
+    ebpf_collector.EbpfCtxScClose();
+    ebpf_collector.DebugPrintEbpfCtxData();
+    ebpf_collector.DebugExportEbpfCtxData("/home/intel/work/mtmc/cpp/tests/test_logs/mtmc_tf_tests_logs/ebpf.txt");
+#endif
 
     ProcessOutput(log_folder);
 
@@ -299,9 +325,14 @@ int main(int argc, char* argv[]) {
     std::string log_folder = std::string(argv[5]);
     std::string pbtxt_file = std::string(argv[6]);
 
+    std::cout << pbtxt_file << std::endl;
+
     // Init Guard sampler
-    mtmc::GuardSampler gs;
-    gs.Read(mtmc::util::PathJoin(log_folder, "perf.data"));
+#ifdef EBPF_CTX_SC
+#else
+//    mtmc::GuardSampler gs;
+//    gs.Read(mtmc::util::PathJoin(log_folder, "perf.data"));
+#endif
 
     // TODO: MODEL PATH HARDCODE
     SessConfig cfg = {.pbtxt_path = pbtxt_file,
@@ -320,6 +351,9 @@ int main(int argc, char* argv[]) {
 
     TestDlrm(cfg, log_folder);
 
-    gs.Stop();
-    gs.TimeExport(mtmc::util::PathJoin(log_folder, "timecal.txt"));
+#ifdef EBPF_CTX_SC
+#else
+//    gs.Stop();
+//    gs.TimeExport(mtmc::util::PathJoin(log_folder, "timecal.txt"));
+#endif
 }

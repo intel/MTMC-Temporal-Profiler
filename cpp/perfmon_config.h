@@ -21,7 +21,10 @@
 #include <string>
 #include <fstream>
 #include <sstream>
+#include <map>
+#include <set>
 
+#include "nlohmann/json.hpp"
 #include "env.h"
 #include "util.h"
 
@@ -56,6 +59,8 @@ union x86_pmu_config {
 
 namespace mtmc {
 
+    uint64_t X86Config(int event, int umask, int inv, int cmask, int edge);
+
     struct ReadSetting {
         int32_t min_reset_intrvl_ns; // Interval between resetting the register. -1 means no reset at all
         bool add_offset; // Add offsets when reading the pmc
@@ -71,6 +76,7 @@ namespace mtmc {
         int fd[GP_COUNTER];
         std::string group_name;
         ReadSetting rd_setting;
+        uint64_t multiplex_intv;
     };
 
     struct EventCtx {
@@ -79,12 +85,29 @@ namespace mtmc {
         void* addr[GP_COUNTER];
         int id[GP_COUNTER];
         ReadSetting rd_setting;
-        uint64_t last_reset_tsc; // The tsc that this eventctx was reset last time
+        uint64_t last_reset_tsc;     // The tsc that this eventctx was reset last time
     };
 
     struct ProfilerSetting {
+        util::CFG_FILE_TYPE cfg_type;
+
         /* Collect Topdown.slots and Topdown.metric PMC */
         bool perf_collect_topdown;
+
+        /* Use eBPF to collect context switch PMC */
+        bool ebpf_collect_ctxsc_pmc;
+
+        /* Constant variables required by the config */
+        std::set<std::string> cnst_var;
+
+        /* ExportMode */
+        int export_mode;
+
+        /* 64bit unique hash value for a given run. Only required by OTLE-Jaeger */
+        uint64_t trace_hash;
+
+        /* Configuration file id. Used for per process event mux */
+        int configs_id;
     };
 
     class PerfmonConfig {
@@ -98,6 +121,15 @@ namespace mtmc {
          * @return 1 for successful, otherwise failed
          */
         static int ReadConfig(const std::string& file_path, std::vector<InputConfig>* config_vec, ProfilerSetting* mtmc_setting);
+
+        /**
+         * Read json config into vector of InputConfig that can be feed into perfmon_collector
+         * @param file_path: Path to the config
+         * @param config_vec: Ptr to the config vector that stores the input config
+         * @param mtmc_setting: Ptrto the Global MTMC profiler setting
+         * @return 1 for success, otherwise failed
+         */
+        static int ReadConfigJson(const std::string& file_path, std::vector<InputConfig>* config_vec, ProfilerSetting* mtmc_setting);
 
         /**
          * Generate ICX/12thGenCore Topdown.metric + Topdown.slot reading config

@@ -22,15 +22,21 @@
 #include <unordered_map>
 #include <list>
 #include <memory>
+#include<deque>
+#include <stack>
 
 #include "perfmon_collector.h"
 #include "mtmc_temp_profiler.h"
 
 namespace mtmc {
 
+// TODO: In order to test mtmc + exporter, here, the size of single profile prefix is set to 256. Need to do sth if prefix is longer than this
+#define SINGLE_DATA_PREFIX_BUFFER_SIZE 1024
     struct SingleProfile {
         // Prefix
-        std::string prefix;
+        char prefix[SINGLE_DATA_PREFIX_BUFFER_SIZE];
+        int64_t int_prefix;
+        uint64_t hash_id;
         // Parent information
         ParamsInfo parent_info;
         // Thread id info
@@ -44,14 +50,63 @@ namespace mtmc {
         uint64_t ret_start[16]; // TODO: Here is HARDCODE with 16, which is enough for current gen of Xeon processor. Consider dynamically change this value
         ReadResult rd_ret_end;
         uint64_t ret_end[16];
+        int multiplex_idx;
         // FLAG bits
-        bool has_start_info;
+        union {
+          struct {
+              char has_start_info : 1,
+              has_end_info : 1,
+              has_topdown_info: 1,
+              reserved : 5;
+          } flag_bits;
+          char flags;
+        };
     };
 
     struct ThreadInfo {
         int64_t tid;
         int32_t pthread_id;
-        std::vector<SingleProfile>* storage_ptr;
+        util::IndexVector<SingleProfile>* storage_ptr;
+        std::stack<size_t> data_tracer;
+    };
+
+    ThreadInfo& GetPerThreadInfo();
+
+    template <typename T>
+    class ThreadLocalSaver {
+    public:
+        ThreadLocalSaver() = default;
+
+        T* GetThreadLocalData() {
+            thread_local T t;
+            return &t;
+        }
+    };
+
+    template <typename T>
+    class ThreadLocalStack {
+    public:
+        ThreadLocalStack() = default;
+
+        std::deque<T>* GetThreadLocalStack() {
+            thread_local std::deque<T> q;
+            return &q;
+        }
+    };
+
+    class Exporter {
+    public:
+        Exporter() = default;
+        virtual ~Exporter() = default;
+
+        virtual int Export(std::list<util::IndexVector<SingleProfile>>& profile_storage,
+                           ProfilerSetting mtmc_setting) {
+            return -1;
+        }
+
+        Exporter(const Exporter&) = delete;
+        Exporter& operator=(const Exporter&) = delete;
+
     };
 
     class MTMCProfiler {
@@ -77,15 +132,32 @@ namespace mtmc {
 
         /**
          * @name Finish
+         * @description Export the timeline to the path stored MTMC_LOG_EXPORT_PATH
+         * @return 0 for success; < 0 for failure
+         */
+        int Finish();
+
+        /**
+         * @name Finish
          * @param file -- input, the path of output file
          * @description do the finish job and export the timeline to the output file
          */
         int Finish(const std::string& file);
 
+
+        int Finish(Exporter& exporter);
+
+
+        /**
+         * @name Finish
+         * @param file -- input, the path of output file
+         * @param clear_when_done Clear storage space after finish.
+         * @description do the finish job and export the timeline to the output file
+         */
+        int Finish(const std::string& file, bool clear_when_done);
+
         /**
          * @name GetParamsInfo
-         * @param params_info -- input, the params information, if params_info.parent_tid == -1, do the log job for first level
-         * @param string prefix -- input, prefix string for log inforamtion
          * @description record record parent's tid and its information including  end time, thread it, cpu core, event information
          * @return 0 for success; < 0 for failure
          */
@@ -95,14 +167,23 @@ namespace mtmc {
          * @name LogStart
          * @param params_info -- input, the params information, if params_info.parent_tid == -1, do the log job for first level
          * @param prefix -- input, prefix string for log information
+         * @param hash_id -- input, a hash_id for this unique event
          * @description record parent's tid and its information including start time, thread it, cpu core, event information
          * @return 0 for success; < 0 for failure
          */
-        int LogStart(ParamsInfo params_info, std::string prefix);
+        int LogStart(ParamsInfo params_info, const std::string& prefix, uint64_t hash_id = 0);
+
+        /**
+         * @name LogStart
+         * @param trace_info -- input, the parent(main task or inter-op task) information from GetParamsInfo function
+         * @param prefix -- input, prefix string for log information. Does not affect data collection.
+         * @description Should be called at the beginning of the subtask (intra-op task) to begin logging for the sub-task
+         * @return 1 for success; < 0 for failure
+         */
+        int LogStart(TraceInfo trace_info, const std::string& prefix);
 
         /**
          * @name LogEnd
-         * @param params_info -- input, the params information, if params_info.parent_tid == -1, do the log job for first level
          * @return 0 for success; < 0 for failure
          */
         int LogEnd();
@@ -114,30 +195,95 @@ namespace mtmc {
          */
         int Close();
 
+        /**
+         * Disable the profiler globally. If the profiler is disabled, it will not capture any data with LogEnd or LogStart.
+         * @return 1 and 0 for previous states (Enabled or disabled). -1 for failed
+         */
+        inline int GlobalProfilerDisable();
+
+        /**
+         * Enable the profiler globally.
+         * @return 1 and 0 for previous states (Enabled or disabled). -1 for failed
+         */
+        inline int GlobalProfilerEnable();
+
+        /**
+         * Return the profiler's status.
+         * @return 1 for enabled. 0 for disabled.
+         */
+        inline int IsEnabled();
+
+        /**
+         * Approximate number of byte used to store log data
+         * @return size in byte
+         */
+        size_t StorageSize();
+
+        /**
+         * Clear the storage space for each thread at the next write operation
+         * @return 1 for success. -1 for failed
+         */
+        int AsyncReuseStorageSpace();
+
+        int AsyncClearStorageSpace();
+
+        /**
+         * Set global int prefix identifier. All data collected will record this global prefix identifier at that moment
+         * @param int_prefix: a 64-bit int prefix value
+         * @return 1 for success. -1 for failed
+         */
+        inline int SetGlobalIntPrefix(int64_t int_prefix);
+
+        inline int UpdateCurrentCtx(const Context& ctx);
+
+        inline Context* GetCurrentCtx();
+
+        // based on ctx queue
+        inline void PushCurrentCtx(const Context& ctx);
+        inline void PopCurrentCtx();
+        inline Context* CurrentCtx();
+        inline int CtxQSize();
+
+        int DirectPerCoreRead(PerCoreReadRet* data, bool is_start);
+
         void DebugPrint();
 
         void DebugPrintSingleProfile(SingleProfile* prof);
 
+        std::shared_ptr<PerfmonCollector> DebugAcquirePerfmonCollector();
+
+        const ProfilerSetting& GetProfilerSetting();
+
         // Sync variables for perfmon collector initialization
-        static std::atomic<int> Inited;
-        static std::mutex InitMux;
+        std::atomic<int> Inited{};
+        std::mutex InitMux{};
 
     private:
         std::string config_addr_;
-        static std::shared_ptr<PerfmonCollector> perfmon_collector_;
-        static ProfilerSetting mtmc_setting_;
+        std::shared_ptr<PerfmonCollector> perfmon_collector_;
+        ProfilerSetting mtmc_setting_{.perf_collect_topdown = false};
 
-        // Init flag here to make sure only 1 profiler can be
+        // Init flag
         bool valid_{};
 
+        // Enable-disable flag
+        std::atomic<bool> collect_flag_{};
+
+        // Global Int Prefix
+        std::atomic<int64_t> global_int_prefix_{};
+
         // Collected data storage
-        std::mutex mux_;
-        std::list<std::vector<SingleProfile>> profile_storage_;
-        std::unordered_map<int64_t, std::vector<SingleProfile>*> thread_storage_mapper;
+        std::mutex mux_{};
+        std::list<util::IndexVector<SingleProfile>> profile_storage_{};
+        std::unordered_map<int64_t, util::IndexVector<SingleProfile>*> thread_storage_mapper{};
+
+        // Context propagation
+        ThreadLocalSaver<Context> ctx_saver{};
+
+        ThreadLocalStack<Context> ctx_info;
 
         void RegisterPerThreadStorage(ThreadInfo* th_info, bool create_at_absence);
     };
-
 }
 
 

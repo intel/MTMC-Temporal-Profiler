@@ -1,14 +1,51 @@
-UseTopdownMetricXXXX
-Group,0
-CPU_CLK_UNHALTED.THREAD,aa,0,0,0
-INST_RETIRED.ANY,c0,0,0,0
-CPU_CLK_UNHALTED.REF_TSC,0,3,0,0
-End
-Group,1
-MEMORY_ACTIVITY.STALLS_L1D_MISS,47,3,0,3
-MEMORY_ACTIVITY.STALLS_L2_MISS,47,5,0,5
-MEMORY_ACTIVITY.STALLS_L3_MISS,47,9,0,9
-End
-Group,2
-EXE_ACTIVITY.BOUND_ON_LOADS,a6,21,0,5
-EXE_ACTIVITY.BOUND_ON_STORES,a6,40,0,2
+{
+    "Configs": [
+        {
+            "Events": {
+                "MEMORY_ACTIVITY.STALLS_L3_MISS": "47,09,0,9,0",
+                "MEMORY_ACTIVITY.STALLS_L2_MISS": "47,05,0,5,0",
+                "MEMORY_ACTIVITY.STALLS_L1D_MISS": "47,03,0,3,0",
+                "EXE_ACTIVITY.BOUND_ON_STORES": "a6,40,0,2,0",
+                "CPU_CLK_UNHALTED.THREAD_P": "3c,00,0,0,0",
+                "EXE_ACTIVITY.BOUND_ON_LOADS": "a6,21,0,5,0",
+                "INT_MISC.UOP_DROPPING": "ad,10,0,0,0",
+                "PERF_METRICS": "0,80,0,0,0",
+                "TOPDOWN.SLOTS:perf_metrics": "0,04,0,0,0"
+            },
+            "EventList": [
+                "TOPDOWN.SLOTS:perf_metrics",
+                "PERF_METRICS",
+                "MEMORY_ACTIVITY.STALLS_L1D_MISS",
+                "EXE_ACTIVITY.BOUND_ON_STORES",
+                "INT_MISC.UOP_DROPPING",
+                "CPU_CLK_UNHALTED.THREAD_P",
+                "MEMORY_ACTIVITY.STALLS_L2_MISS",
+                "EXE_ACTIVITY.BOUND_ON_LOADS",
+                "MEMORY_ACTIVITY.STALLS_L3_MISS"
+            ],
+            "Metrics": [
+                "metric_TMA_Frontend_Bound(%)",
+                "metric_TMA_..Fetch_Latency(%)",
+                "metric_TMA_..Fetch_Bandwidth(%)",
+                "metric_TMA_Bad_Speculation(%)",
+                "metric_TMA_..Branch_Mispredicts(%)",
+                "metric_TMA_..Machine_Clears(%)",
+                "metric_TMA_Backend_Bound(%)",
+                "metric_TMA_..Memory_Bound(%)",
+                "metric_TMA_....L1_Bound(%)",
+                "metric_TMA_....L2_Bound(%)",
+                "metric_TMA_....L3_Bound(%)",
+                "metric_TMA_....DRAM_Bound(%)",
+                "metric_TMA_....Store_Bound(%)",
+                "metric_TMA_..Core_Bound(%)",
+                "metric_TMA_Retiring(%)",
+                "metric_TMA_..Light_Operations(%)",
+                "metric_TMA_..Heavy_Operations(%)"
+            ],
+            "Constants": []
+        }
+    ],
+    "SwitchIntvl": "1000ms",
+    "OverallCnsts": [],
+    "ExportMode": dxca
+}
