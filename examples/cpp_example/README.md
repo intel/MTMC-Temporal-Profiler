@@ -5,16 +5,6 @@ Please follow doc/Install.md to install all required packages and the profiler.
 
 ## Generate a configuration of use the example configuration
 
-### Online generation
-You can generate a configuration from our website (Currently experimental. Only available for Intel internal usage).
-
-1. Goto http://10.239.129.216:9999/
-2. On the sidebar, select export mode to be 3
-3. At Low-Level tag, select desired metrics.
-4. Click generate config
-5. Click download config
-6. Store the configuration to your machine. 
-
 ### Example Configuration
 Instead, you could use the example configuration: example_cfg_mem.json. This configuration is target for SPR to measure Topdown metrics and memory 
 
